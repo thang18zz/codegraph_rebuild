@@ -1,0 +1,27 @@
+{
+  "name": "portable-codegraph",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Portable local semantic compiler and context router for coding agents",
+  "type": "module",
+  "bin": {
+    "codegraph": "bin/codegraph.js"
+  },
+  "scripts": {
+    "build": "node scripts/build.js",
+    "check": "node --check bin/codegraph.js && node --test",
+    "test": "node --test",
+    "verify": "node scripts/verify.js",
+    "start": "node bin/codegraph.js"
+  },
+  "engines": {
+    "node": ">=25.7.0"
+  },
+  "dependencies": {
+    "@vscode/tree-sitter-wasm": "0.3.1",
+    "web-tree-sitter": "0.26.12"
+  },
+  "devDependencies": {
+    "esbuild": "0.25.9"
+  }
+}

@@ -1,0 +1,84 @@
+id: TOK-005
+title: Instruction overhead
+category: tokens
+level: L2
+severity: S2
+status: draft
+tags: []
+objective: Runtime instructions must remain compact.
+fixture:
+  type: directory
+  path: fixtures/tokens/tok-005
+  description: Load integration prompt.
+preconditions:
+- Portable CodeGraph executable is available.
+- Fixture source and independent ground truth are available.
+- Test starts from a clean derived .codegraph state unless stated otherwise.
+steps:
+- action: prepare
+  description: Create or reset the testcase fixture.
+- action: execute
+  description: Run the CodeGraph operation or agent benchmark described by the testcase.
+- action: capture
+  description: Capture graph output, MCP output, revisions, metrics and relevant agent/tool logs.
+- action: compare
+  description: Compare against independent ground truth and testcase expectations.
+expected:
+- condition: Injected CodeGraph instruction tokens remain minimal.
+- condition: Source repository is never modified by indexing or retrieval.
+metrics:
+- name: instruction_tokens
+  target: instruction_tokens <= 200
+failure_signals:
+- CodeGraph crashes or corrupts source.
+- Result contradicts independent ground truth without uncertainty marking.
+- A LOW/UNKNOWN/STALE/PARTIAL condition is presented as complete HIGH-confidence knowledge.
+notes: ''
+acceptance:
+  all_must_pass: true
+  criteria:
+  - Instruction tokens <= target.
+  - Full design docs are not injected.
+  - Only minimal behavioral contract/tool schema is present.
+  hard_fail_if:
+  - Any repository source file is corrupted or modified by indexing/retrieval unless mutation is an explicit testcase
+    step.
+  - CodeGraph reports HIGH/complete certainty that contradicts the independent oracle for an S0/S1 semantic fact.
+  - A STALE/PARTIAL/LOW/UNKNOWN condition that materially affects the test is silently hidden.
+  - The testcase uses CodeGraph output itself as the ground-truth oracle.
+  result_rule: PASS only when every mandatory criterion and metric target passes. Otherwise FAIL; use SKIP only
+    for explicitly unavailable platform/capability with recorded reason.
+autonomous_execution:
+  human_help_required: false
+  isolation: Create a fresh temporary directory or disposable Git worktree. Never run destructive mutations on a
+    user's real repository.
+  fixture_recipe:
+  - Capture actual injected CodeGraph runtime instructions/tool schema text.
+  - Tokenize with agent/model tokenizer when available; otherwise use declared tokenizer fixture.
+  oracle_creation:
+  - Before running CodeGraph, write an independent truth manifest from this testcase recipe.
+  - Store expected entities/relations/regions/safety states in `expected/` under the temporary fixture.
+  - The oracle must be derived from fixture source/generator declarations, never copied from CodeGraph output.
+  - Hash the fixture source tree before CodeGraph execution so unintended source mutation can be detected.
+  execution_steps:
+  - Resolve the portable CodeGraph binary from runner configuration; do not install global dependencies.
+  - Create/reset the disposable fixture exactly from `fixture_recipe`.
+  - Create and freeze the independent oracle and initial source-tree hash.
+  - Run the testcase operations from `steps`, using direct-path CLI/MCP invocation.
+  - Capture stdout, stderr, exit code, `codegraph.py`, status, relevant MCP responses, revision metadata, process
+    metrics, and final source-tree hash.
+  - For agent benchmarks, run baseline and CodeGraph variant from identical clean fixture copies and identical agent/model
+    settings.
+  - Evaluate every item in `acceptance.criteria` and every metric target.
+  - Check every item in `acceptance.hard_fail_if`.
+  - Write machine-readable `result.yaml` and preserve logs/artifacts under a testcase result directory.
+  - Return PASS only under `acceptance.result_rule`.
+  required_artifacts:
+  - fixture source or generator seed
+  - independent expected/oracle files
+  - source-tree hash before and after
+  - CodeGraph command log
+  - status/revision snapshot
+  - relevant `codegraph.py`/MCP output
+  - metric measurements
+  - result.yaml

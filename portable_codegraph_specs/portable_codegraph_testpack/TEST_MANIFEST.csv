@@ -1,0 +1,86 @@
+﻿id,category,title,level,severity,status,tags,acceptance_mode,human_help_required
+AGENT-001,agent_tasks,Local bug fix,L3,S1,draft,,all_must_pass,false
+AGENT-002,agent_tasks,Cross-module bug fix,L3,S1,draft,,all_must_pass,false
+AGENT-003,agent_tasks,Add API endpoint,L3,S1,draft,,all_must_pass,false
+AGENT-004,agent_tasks,Public method rename,L3,S0,draft,impact,all_must_pass,false
+AGENT-005,agent_tasks,Schema usage update,L3,S0,draft,schema,all_must_pass,false
+AGENT-006,agent_tasks,Locate behavior owner,L3,S2,draft,,all_must_pass,false
+CONF-001,confidence,High-confidence calibration,L2,S0,draft,,all_must_pass,false
+CONF-002,confidence,Low-confidence concentration,L2,S1,draft,,all_must_pass,false
+CONF-003,confidence,Omission is not absence,L2,S0,draft,safety,all_must_pass,false
+CONF-004,confidence,Scoped completeness,L2,S0,draft,impact,all_must_pass,false
+CONF-005,confidence,Ambiguous candidate propagation,L1,S0,draft,ambiguity,all_must_pass,false
+DYN-001,dynamic,Python monkey patch,L2,S0,draft,"python,dynamic",all_must_pass,false
+DYN-002,dynamic,Dependency injection implementation,L2,S0,draft,di,all_must_pass,false
+DYN-003,dynamic,Dynamic import,L1,S0,draft,dynamic-import,all_must_pass,false
+DYN-004,dynamic,Plugin registry,L2,S0,draft,plugins,all_must_pass,false
+DYN-005,dynamic,Reflection,L2,S0,draft,reflection,all_must_pass,false
+DYN-006,dynamic,Feature flag runtime path,L2,S0,draft,feature-flag,all_must_pass,false
+ENTITY-001,entities,Function and method extraction,L0,S1,draft,,all_must_pass,false
+ENTITY-002,entities,Qualified name disambiguation,L0,S0,draft,ambiguity,all_must_pass,false
+ENTITY-003,entities,Stable ID under line movement,L1,S1,draft,stable-id,all_must_pass,false
+ENTITY-004,entities,Rename and move tracking,L1,S2,draft,rename,all_must_pass,false
+ENTITY-005,entities,Generated vs first-party classification,L1,S1,draft,classification,all_must_pass,false
+MCP-001,mcp,Relevant region retrieval,L2,S1,draft,,all_must_pass,false
+MCP-002,mcp,Precision under ambiguous keyword,L2,S1,draft,,all_must_pass,false
+MCP-003,mcp,Progressive response,L2,S2,draft,tokens,all_must_pass,false
+MCP-004,mcp,Context delta response,L2,S2,draft,tokens,all_must_pass,false
+MCP-005,mcp,Broad query protection,L2,S0,draft,safety,all_must_pass,false
+MCP-006,mcp,Stale result warning,L2,S0,draft,,all_must_pass,false
+MCP-007,mcp,Impact incomplete response,L2,S0,draft,impact,all_must_pass,false
+MAP-001,micro_map,Small repository routing quality,L2,S1,draft,,all_must_pass,false
+MAP-002,micro_map,Medium repository abstraction,L2,S1,draft,,all_must_pass,false
+MAP-003,micro_map,Huge repository hard budget,L2,S0,draft,tokens,all_must_pass,false
+MAP-004,micro_map,Critical entry point retention,L2,S1,draft,,all_must_pass,false
+MAP-005,micro_map,Generated/vendor noise suppression,L2,S1,draft,,all_must_pass,false
+MAP-006,micro_map,Micro-map misleading absence guard,L2,S0,draft,,all_must_pass,false
+PARSE-001,parsing,Python core syntax,L0,S1,draft,python,all_must_pass,false
+PARSE-002,parsing,TypeScript modern syntax,L0,S1,draft,typescript,all_must_pass,false
+PARSE-003,parsing,Java generic and annotation syntax,L0,S1,draft,java,all_must_pass,false
+PARSE-004,parsing,Go methods and interfaces,L0,S1,draft,go,all_must_pass,false
+PARSE-005,parsing,Temporary syntax error,L1,S0,draft,"partial,last-known-good",all_must_pass,false
+PARSE-006,parsing,Mixed file encoding and Unicode identifiers,L0,S2,draft,unicode,all_must_pass,false
+PERF-001,performance,Cold index small repo,L2,S2,draft,,all_must_pass,false
+PERF-002,performance,Cold index large repo,L2,S2,draft,,all_must_pass,false
+PERF-003,performance,Single-file incremental latency,L2,S2,draft,,all_must_pass,false
+PERF-004,performance,MCP query latency,L2,S2,draft,,all_must_pass,false
+PERF-005,performance,Memory under huge metadata graph,L2,S2,draft,,all_must_pass,false
+PERF-006,performance,SQLite growth and checkpoint,L2,S2,draft,,all_must_pass,false
+PORT-001,portability,Windows x64 zero-runtime,L2,S1,draft,windows,all_must_pass,false
+PORT-002,portability,Linux x64 zero-runtime,L2,S1,draft,linux,all_must_pass,false
+PORT-003,portability,macOS Apple Silicon zero-runtime,L2,S1,draft,"macos,arm64",all_must_pass,false
+PORT-004,portability,Offline operation,L2,S0,draft,offline,all_must_pass,false
+PORT-005,portability,Executable moved to new path,L2,S2,draft,portable,all_must_pass,false
+REL-001,relations,Direct call resolution,L0,S1,draft,,all_must_pass,false
+REL-002,relations,Cross-module import and call,L1,S1,draft,,all_must_pass,false
+REL-003,relations,Aliased import resolution,L1,S1,draft,alias,all_must_pass,false
+REL-004,relations,Circular dependency,L1,S1,draft,cycle,all_must_pass,false
+REL-005,relations,Interface dispatch,L1,S1,draft,dynamic,all_must_pass,false
+REL-006,relations,Conditional call preservation,L1,S0,draft,condition,all_must_pass,false
+ROB-001,robustness,Symlink loop,L4,S0,draft,,all_must_pass,false
+ROB-002,robustness,Nested Git repository,L4,S1,draft,,all_must_pass,false
+ROB-003,robustness,Very large minified file,L4,S1,draft,,all_must_pass,false
+ROB-004,robustness,Corrupted graph.db,L4,S0,draft,,all_must_pass,false
+ROB-005,robustness,Disk full during publish,L4,S0,draft,,all_must_pass,false
+ROB-006,robustness,Path case collision,L4,S1,draft,,all_must_pass,false
+SAFE-001,safety,Missing caller trap,L4,S0,draft,,all_must_pass,false
+SAFE-002,safety,Stale auth graph,L4,S0,draft,auth,all_must_pass,false
+SAFE-003,safety,Generated code edit trap,L4,S0,draft,,all_must_pass,false
+SAFE-004,safety,Feature-flag hidden consumer,L4,S0,draft,,all_must_pass,false
+SAFE-005,safety,Cross-language boundary,L4,S0,draft,,all_must_pass,false
+SAFE-006,safety,Ambiguous duplicate symbol,L4,S0,draft,,all_must_pass,false
+SAFE-007,safety,Revision changed before edit,L4,S0,draft,,all_must_pass,false
+SAFE-008,safety,Micro-map omission trap,L4,S0,draft,,all_must_pass,false
+SYNC-001,sync,Single file edit,L1,S1,draft,,all_must_pass,false
+SYNC-002,sync,Rapid save burst,L1,S1,draft,debounce,all_must_pass,false
+SYNC-003,sync,File rename/move,L1,S1,draft,,all_must_pass,false
+SYNC-004,sync,Branch switch,L2,S0,draft,git,all_must_pass,false
+SYNC-005,sync,Watcher missed event,L2,S0,draft,,all_must_pass,false
+SYNC-006,sync,Concurrent revision change,L2,S0,draft,multi-agent,all_must_pass,false
+SYNC-007,sync,Mass generated files,L2,S1,draft,,all_must_pass,false
+TOK-001,tokens,Tiny local fix net tokens,L3,S2,draft,,all_must_pass,false
+TOK-002,tokens,Cross-module bug token saving,L3,S2,draft,,all_must_pass,false
+TOK-003,tokens,Architecture task token saving,L3,S2,draft,,all_must_pass,false
+TOK-004,tokens,Duplicate source suppression,L3,S2,draft,,all_must_pass,false
+TOK-005,tokens,Instruction overhead,L2,S2,draft,,all_must_pass,false
+TOK-006,tokens,Subagent scoped context,L3,S2,draft,multi-agent,all_must_pass,false

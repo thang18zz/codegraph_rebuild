@@ -1,0 +1,84 @@
+id: ROB-002
+title: Nested Git repository
+category: robustness
+level: L4
+severity: S1
+status: draft
+tags: []
+objective: Do not silently cross project boundaries.
+fixture:
+  type: directory
+  path: fixtures/robustness/rob-002
+  description: Repo contains nested repo/submodule.
+preconditions:
+- Portable CodeGraph executable is available.
+- Fixture source and independent ground truth are available.
+- Test starts from a clean derived .codegraph state unless stated otherwise.
+steps:
+- action: prepare
+  description: Create or reset the testcase fixture.
+- action: execute
+  description: Run the CodeGraph operation or agent benchmark described by the testcase.
+- action: capture
+  description: Capture graph output, MCP output, revisions, metrics and relevant agent/tool logs.
+- action: compare
+  description: Compare against independent ground truth and testcase expectations.
+expected:
+- condition: Boundary is explicit and externally referenced or separately handled.
+- condition: Source repository is never modified by indexing or retrieval.
+metrics:
+- name: boundary_violation
+  target: boundary_violation == false
+failure_signals:
+- CodeGraph crashes or corrupts source.
+- Result contradicts independent ground truth without uncertainty marking.
+- A LOW/UNKNOWN/STALE/PARTIAL condition is presented as complete HIGH-confidence knowledge.
+notes: ''
+acceptance:
+  all_must_pass: true
+  criteria:
+  - Scanner does not silently cross configured project boundary.
+  - External region is explicit or separately handled.
+  - No symbol collision caused by accidental nested scan.
+  hard_fail_if:
+  - Any repository source file is corrupted or modified by indexing/retrieval unless mutation is an explicit testcase
+    step.
+  - CodeGraph reports HIGH/complete certainty that contradicts the independent oracle for an S0/S1 semantic fact.
+  - A STALE/PARTIAL/LOW/UNKNOWN condition that materially affects the test is silently hidden.
+  - The testcase uses CodeGraph output itself as the ground-truth oracle.
+  result_rule: PASS only when every mandatory criterion and metric target passes. Otherwise FAIL; use SKIP only
+    for explicitly unavailable platform/capability with recorded reason.
+autonomous_execution:
+  human_help_required: false
+  isolation: Create a fresh temporary directory or disposable Git worktree. Never run destructive mutations on a
+    user's real repository.
+  fixture_recipe:
+  - Create parent Git repo containing nested Git repo or submodule fixture.
+  - Place similarly named symbols on both sides of boundary.
+  oracle_creation:
+  - Before running CodeGraph, write an independent truth manifest from this testcase recipe.
+  - Store expected entities/relations/regions/safety states in `expected/` under the temporary fixture.
+  - The oracle must be derived from fixture source/generator declarations, never copied from CodeGraph output.
+  - Hash the fixture source tree before CodeGraph execution so unintended source mutation can be detected.
+  execution_steps:
+  - Resolve the portable CodeGraph binary from runner configuration; do not install global dependencies.
+  - Create/reset the disposable fixture exactly from `fixture_recipe`.
+  - Create and freeze the independent oracle and initial source-tree hash.
+  - Run the testcase operations from `steps`, using direct-path CLI/MCP invocation.
+  - Capture stdout, stderr, exit code, `codegraph.py`, status, relevant MCP responses, revision metadata, process
+    metrics, and final source-tree hash.
+  - For agent benchmarks, run baseline and CodeGraph variant from identical clean fixture copies and identical agent/model
+    settings.
+  - Evaluate every item in `acceptance.criteria` and every metric target.
+  - Check every item in `acceptance.hard_fail_if`.
+  - Write machine-readable `result.yaml` and preserve logs/artifacts under a testcase result directory.
+  - Return PASS only under `acceptance.result_rule`.
+  required_artifacts:
+  - fixture source or generator seed
+  - independent expected/oracle files
+  - source-tree hash before and after
+  - CodeGraph command log
+  - status/revision snapshot
+  - relevant `codegraph.py`/MCP output
+  - metric measurements
+  - result.yaml

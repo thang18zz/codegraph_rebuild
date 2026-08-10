@@ -1,0 +1,850 @@
+[
+  {
+    "id": "PARSE-001",
+    "category": "parsing",
+    "title": "Python core syntax",
+    "level": "L0",
+    "severity": "S1",
+    "status": "draft",
+    "tags": [
+      "python"
+    ]
+  },
+  {
+    "id": "PARSE-002",
+    "category": "parsing",
+    "title": "TypeScript modern syntax",
+    "level": "L0",
+    "severity": "S1",
+    "status": "draft",
+    "tags": [
+      "typescript"
+    ]
+  },
+  {
+    "id": "PARSE-003",
+    "category": "parsing",
+    "title": "Java generic and annotation syntax",
+    "level": "L0",
+    "severity": "S1",
+    "status": "draft",
+    "tags": [
+      "java"
+    ]
+  },
+  {
+    "id": "PARSE-004",
+    "category": "parsing",
+    "title": "Go methods and interfaces",
+    "level": "L0",
+    "severity": "S1",
+    "status": "draft",
+    "tags": [
+      "go"
+    ]
+  },
+  {
+    "id": "PARSE-005",
+    "category": "parsing",
+    "title": "Temporary syntax error",
+    "level": "L1",
+    "severity": "S0",
+    "status": "draft",
+    "tags": [
+      "partial",
+      "last-known-good"
+    ]
+  },
+  {
+    "id": "PARSE-006",
+    "category": "parsing",
+    "title": "Mixed file encoding and Unicode identifiers",
+    "level": "L0",
+    "severity": "S2",
+    "status": "draft",
+    "tags": [
+      "unicode"
+    ]
+  },
+  {
+    "id": "ENTITY-001",
+    "category": "entities",
+    "title": "Function and method extraction",
+    "level": "L0",
+    "severity": "S1",
+    "status": "draft",
+    "tags": []
+  },
+  {
+    "id": "ENTITY-002",
+    "category": "entities",
+    "title": "Qualified name disambiguation",
+    "level": "L0",
+    "severity": "S0",
+    "status": "draft",
+    "tags": [
+      "ambiguity"
+    ]
+  },
+  {
+    "id": "ENTITY-003",
+    "category": "entities",
+    "title": "Stable ID under line movement",
+    "level": "L1",
+    "severity": "S1",
+    "status": "draft",
+    "tags": [
+      "stable-id"
+    ]
+  },
+  {
+    "id": "ENTITY-004",
+    "category": "entities",
+    "title": "Rename and move tracking",
+    "level": "L1",
+    "severity": "S2",
+    "status": "draft",
+    "tags": [
+      "rename"
+    ]
+  },
+  {
+    "id": "ENTITY-005",
+    "category": "entities",
+    "title": "Generated vs first-party classification",
+    "level": "L1",
+    "severity": "S1",
+    "status": "draft",
+    "tags": [
+      "classification"
+    ]
+  },
+  {
+    "id": "REL-001",
+    "category": "relations",
+    "title": "Direct call resolution",
+    "level": "L0",
+    "severity": "S1",
+    "status": "draft",
+    "tags": []
+  },
+  {
+    "id": "REL-002",
+    "category": "relations",
+    "title": "Cross-module import and call",
+    "level": "L1",
+    "severity": "S1",
+    "status": "draft",
+    "tags": []
+  },
+  {
+    "id": "REL-003",
+    "category": "relations",
+    "title": "Aliased import resolution",
+    "level": "L1",
+    "severity": "S1",
+    "status": "draft",
+    "tags": [
+      "alias"
+    ]
+  },
+  {
+    "id": "REL-004",
+    "category": "relations",
+    "title": "Circular dependency",
+    "level": "L1",
+    "severity": "S1",
+    "status": "draft",
+    "tags": [
+      "cycle"
+    ]
+  },
+  {
+    "id": "REL-005",
+    "category": "relations",
+    "title": "Interface dispatch",
+    "level": "L1",
+    "severity": "S1",
+    "status": "draft",
+    "tags": [
+      "dynamic"
+    ]
+  },
+  {
+    "id": "REL-006",
+    "category": "relations",
+    "title": "Conditional call preservation",
+    "level": "L1",
+    "severity": "S0",
+    "status": "draft",
+    "tags": [
+      "condition"
+    ]
+  },
+  {
+    "id": "DYN-001",
+    "category": "dynamic",
+    "title": "Python monkey patch",
+    "level": "L2",
+    "severity": "S0",
+    "status": "draft",
+    "tags": [
+      "python",
+      "dynamic"
+    ]
+  },
+  {
+    "id": "DYN-002",
+    "category": "dynamic",
+    "title": "Dependency injection implementation",
+    "level": "L2",
+    "severity": "S0",
+    "status": "draft",
+    "tags": [
+      "di"
+    ]
+  },
+  {
+    "id": "DYN-003",
+    "category": "dynamic",
+    "title": "Dynamic import",
+    "level": "L1",
+    "severity": "S0",
+    "status": "draft",
+    "tags": [
+      "dynamic-import"
+    ]
+  },
+  {
+    "id": "DYN-004",
+    "category": "dynamic",
+    "title": "Plugin registry",
+    "level": "L2",
+    "severity": "S0",
+    "status": "draft",
+    "tags": [
+      "plugins"
+    ]
+  },
+  {
+    "id": "DYN-005",
+    "category": "dynamic",
+    "title": "Reflection",
+    "level": "L2",
+    "severity": "S0",
+    "status": "draft",
+    "tags": [
+      "reflection"
+    ]
+  },
+  {
+    "id": "DYN-006",
+    "category": "dynamic",
+    "title": "Feature flag runtime path",
+    "level": "L2",
+    "severity": "S0",
+    "status": "draft",
+    "tags": [
+      "feature-flag"
+    ]
+  },
+  {
+    "id": "CONF-001",
+    "category": "confidence",
+    "title": "High-confidence calibration",
+    "level": "L2",
+    "severity": "S0",
+    "status": "draft",
+    "tags": []
+  },
+  {
+    "id": "CONF-002",
+    "category": "confidence",
+    "title": "Low-confidence concentration",
+    "level": "L2",
+    "severity": "S1",
+    "status": "draft",
+    "tags": []
+  },
+  {
+    "id": "CONF-003",
+    "category": "confidence",
+    "title": "Omission is not absence",
+    "level": "L2",
+    "severity": "S0",
+    "status": "draft",
+    "tags": [
+      "safety"
+    ]
+  },
+  {
+    "id": "CONF-004",
+    "category": "confidence",
+    "title": "Scoped completeness",
+    "level": "L2",
+    "severity": "S0",
+    "status": "draft",
+    "tags": [
+      "impact"
+    ]
+  },
+  {
+    "id": "CONF-005",
+    "category": "confidence",
+    "title": "Ambiguous candidate propagation",
+    "level": "L1",
+    "severity": "S0",
+    "status": "draft",
+    "tags": [
+      "ambiguity"
+    ]
+  },
+  {
+    "id": "MAP-001",
+    "category": "micro_map",
+    "title": "Small repository routing quality",
+    "level": "L2",
+    "severity": "S1",
+    "status": "draft",
+    "tags": []
+  },
+  {
+    "id": "MAP-002",
+    "category": "micro_map",
+    "title": "Medium repository abstraction",
+    "level": "L2",
+    "severity": "S1",
+    "status": "draft",
+    "tags": []
+  },
+  {
+    "id": "MAP-003",
+    "category": "micro_map",
+    "title": "Huge repository hard budget",
+    "level": "L2",
+    "severity": "S0",
+    "status": "draft",
+    "tags": [
+      "tokens"
+    ]
+  },
+  {
+    "id": "MAP-004",
+    "category": "micro_map",
+    "title": "Critical entry point retention",
+    "level": "L2",
+    "severity": "S1",
+    "status": "draft",
+    "tags": []
+  },
+  {
+    "id": "MAP-005",
+    "category": "micro_map",
+    "title": "Generated/vendor noise suppression",
+    "level": "L2",
+    "severity": "S1",
+    "status": "draft",
+    "tags": []
+  },
+  {
+    "id": "MAP-006",
+    "category": "micro_map",
+    "title": "Micro-map misleading absence guard",
+    "level": "L2",
+    "severity": "S0",
+    "status": "draft",
+    "tags": []
+  },
+  {
+    "id": "MCP-001",
+    "category": "mcp",
+    "title": "Relevant region retrieval",
+    "level": "L2",
+    "severity": "S1",
+    "status": "draft",
+    "tags": []
+  },
+  {
+    "id": "MCP-002",
+    "category": "mcp",
+    "title": "Precision under ambiguous keyword",
+    "level": "L2",
+    "severity": "S1",
+    "status": "draft",
+    "tags": []
+  },
+  {
+    "id": "MCP-003",
+    "category": "mcp",
+    "title": "Progressive response",
+    "level": "L2",
+    "severity": "S2",
+    "status": "draft",
+    "tags": [
+      "tokens"
+    ]
+  },
+  {
+    "id": "MCP-004",
+    "category": "mcp",
+    "title": "Context delta response",
+    "level": "L2",
+    "severity": "S2",
+    "status": "draft",
+    "tags": [
+      "tokens"
+    ]
+  },
+  {
+    "id": "MCP-005",
+    "category": "mcp",
+    "title": "Broad query protection",
+    "level": "L2",
+    "severity": "S0",
+    "status": "draft",
+    "tags": [
+      "safety"
+    ]
+  },
+  {
+    "id": "MCP-006",
+    "category": "mcp",
+    "title": "Stale result warning",
+    "level": "L2",
+    "severity": "S0",
+    "status": "draft",
+    "tags": []
+  },
+  {
+    "id": "MCP-007",
+    "category": "mcp",
+    "title": "Impact incomplete response",
+    "level": "L2",
+    "severity": "S0",
+    "status": "draft",
+    "tags": [
+      "impact"
+    ]
+  },
+  {
+    "id": "TOK-001",
+    "category": "tokens",
+    "title": "Tiny local fix net tokens",
+    "level": "L3",
+    "severity": "S2",
+    "status": "draft",
+    "tags": []
+  },
+  {
+    "id": "TOK-002",
+    "category": "tokens",
+    "title": "Cross-module bug token saving",
+    "level": "L3",
+    "severity": "S2",
+    "status": "draft",
+    "tags": []
+  },
+  {
+    "id": "TOK-003",
+    "category": "tokens",
+    "title": "Architecture task token saving",
+    "level": "L3",
+    "severity": "S2",
+    "status": "draft",
+    "tags": []
+  },
+  {
+    "id": "TOK-004",
+    "category": "tokens",
+    "title": "Duplicate source suppression",
+    "level": "L3",
+    "severity": "S2",
+    "status": "draft",
+    "tags": []
+  },
+  {
+    "id": "TOK-005",
+    "category": "tokens",
+    "title": "Instruction overhead",
+    "level": "L2",
+    "severity": "S2",
+    "status": "draft",
+    "tags": []
+  },
+  {
+    "id": "TOK-006",
+    "category": "tokens",
+    "title": "Subagent scoped context",
+    "level": "L3",
+    "severity": "S2",
+    "status": "draft",
+    "tags": [
+      "multi-agent"
+    ]
+  },
+  {
+    "id": "AGENT-001",
+    "category": "agent_tasks",
+    "title": "Local bug fix",
+    "level": "L3",
+    "severity": "S1",
+    "status": "draft",
+    "tags": []
+  },
+  {
+    "id": "AGENT-002",
+    "category": "agent_tasks",
+    "title": "Cross-module bug fix",
+    "level": "L3",
+    "severity": "S1",
+    "status": "draft",
+    "tags": []
+  },
+  {
+    "id": "AGENT-003",
+    "category": "agent_tasks",
+    "title": "Add API endpoint",
+    "level": "L3",
+    "severity": "S1",
+    "status": "draft",
+    "tags": []
+  },
+  {
+    "id": "AGENT-004",
+    "category": "agent_tasks",
+    "title": "Public method rename",
+    "level": "L3",
+    "severity": "S0",
+    "status": "draft",
+    "tags": [
+      "impact"
+    ]
+  },
+  {
+    "id": "AGENT-005",
+    "category": "agent_tasks",
+    "title": "Schema usage update",
+    "level": "L3",
+    "severity": "S0",
+    "status": "draft",
+    "tags": [
+      "schema"
+    ]
+  },
+  {
+    "id": "AGENT-006",
+    "category": "agent_tasks",
+    "title": "Locate behavior owner",
+    "level": "L3",
+    "severity": "S2",
+    "status": "draft",
+    "tags": []
+  },
+  {
+    "id": "SYNC-001",
+    "category": "sync",
+    "title": "Single file edit",
+    "level": "L1",
+    "severity": "S1",
+    "status": "draft",
+    "tags": []
+  },
+  {
+    "id": "SYNC-002",
+    "category": "sync",
+    "title": "Rapid save burst",
+    "level": "L1",
+    "severity": "S1",
+    "status": "draft",
+    "tags": [
+      "debounce"
+    ]
+  },
+  {
+    "id": "SYNC-003",
+    "category": "sync",
+    "title": "File rename/move",
+    "level": "L1",
+    "severity": "S1",
+    "status": "draft",
+    "tags": []
+  },
+  {
+    "id": "SYNC-004",
+    "category": "sync",
+    "title": "Branch switch",
+    "level": "L2",
+    "severity": "S0",
+    "status": "draft",
+    "tags": [
+      "git"
+    ]
+  },
+  {
+    "id": "SYNC-005",
+    "category": "sync",
+    "title": "Watcher missed event",
+    "level": "L2",
+    "severity": "S0",
+    "status": "draft",
+    "tags": []
+  },
+  {
+    "id": "SYNC-006",
+    "category": "sync",
+    "title": "Concurrent revision change",
+    "level": "L2",
+    "severity": "S0",
+    "status": "draft",
+    "tags": [
+      "multi-agent"
+    ]
+  },
+  {
+    "id": "SYNC-007",
+    "category": "sync",
+    "title": "Mass generated files",
+    "level": "L2",
+    "severity": "S1",
+    "status": "draft",
+    "tags": []
+  },
+  {
+    "id": "SAFE-001",
+    "category": "safety",
+    "title": "Missing caller trap",
+    "level": "L4",
+    "severity": "S0",
+    "status": "draft",
+    "tags": []
+  },
+  {
+    "id": "SAFE-002",
+    "category": "safety",
+    "title": "Stale auth graph",
+    "level": "L4",
+    "severity": "S0",
+    "status": "draft",
+    "tags": [
+      "auth"
+    ]
+  },
+  {
+    "id": "SAFE-003",
+    "category": "safety",
+    "title": "Generated code edit trap",
+    "level": "L4",
+    "severity": "S0",
+    "status": "draft",
+    "tags": []
+  },
+  {
+    "id": "SAFE-004",
+    "category": "safety",
+    "title": "Feature-flag hidden consumer",
+    "level": "L4",
+    "severity": "S0",
+    "status": "draft",
+    "tags": []
+  },
+  {
+    "id": "SAFE-005",
+    "category": "safety",
+    "title": "Cross-language boundary",
+    "level": "L4",
+    "severity": "S0",
+    "status": "draft",
+    "tags": []
+  },
+  {
+    "id": "SAFE-006",
+    "category": "safety",
+    "title": "Ambiguous duplicate symbol",
+    "level": "L4",
+    "severity": "S0",
+    "status": "draft",
+    "tags": []
+  },
+  {
+    "id": "SAFE-007",
+    "category": "safety",
+    "title": "Revision changed before edit",
+    "level": "L4",
+    "severity": "S0",
+    "status": "draft",
+    "tags": []
+  },
+  {
+    "id": "SAFE-008",
+    "category": "safety",
+    "title": "Micro-map omission trap",
+    "level": "L4",
+    "severity": "S0",
+    "status": "draft",
+    "tags": []
+  },
+  {
+    "id": "PERF-001",
+    "category": "performance",
+    "title": "Cold index small repo",
+    "level": "L2",
+    "severity": "S2",
+    "status": "draft",
+    "tags": []
+  },
+  {
+    "id": "PERF-002",
+    "category": "performance",
+    "title": "Cold index large repo",
+    "level": "L2",
+    "severity": "S2",
+    "status": "draft",
+    "tags": []
+  },
+  {
+    "id": "PERF-003",
+    "category": "performance",
+    "title": "Single-file incremental latency",
+    "level": "L2",
+    "severity": "S2",
+    "status": "draft",
+    "tags": []
+  },
+  {
+    "id": "PERF-004",
+    "category": "performance",
+    "title": "MCP query latency",
+    "level": "L2",
+    "severity": "S2",
+    "status": "draft",
+    "tags": []
+  },
+  {
+    "id": "PERF-005",
+    "category": "performance",
+    "title": "Memory under huge metadata graph",
+    "level": "L2",
+    "severity": "S2",
+    "status": "draft",
+    "tags": []
+  },
+  {
+    "id": "PERF-006",
+    "category": "performance",
+    "title": "SQLite growth and checkpoint",
+    "level": "L2",
+    "severity": "S2",
+    "status": "draft",
+    "tags": []
+  },
+  {
+    "id": "PORT-001",
+    "category": "portability",
+    "title": "Windows x64 zero-runtime",
+    "level": "L2",
+    "severity": "S1",
+    "status": "draft",
+    "tags": [
+      "windows"
+    ]
+  },
+  {
+    "id": "PORT-002",
+    "category": "portability",
+    "title": "Linux x64 zero-runtime",
+    "level": "L2",
+    "severity": "S1",
+    "status": "draft",
+    "tags": [
+      "linux"
+    ]
+  },
+  {
+    "id": "PORT-003",
+    "category": "portability",
+    "title": "macOS Apple Silicon zero-runtime",
+    "level": "L2",
+    "severity": "S1",
+    "status": "draft",
+    "tags": [
+      "macos",
+      "arm64"
+    ]
+  },
+  {
+    "id": "PORT-004",
+    "category": "portability",
+    "title": "Offline operation",
+    "level": "L2",
+    "severity": "S0",
+    "status": "draft",
+    "tags": [
+      "offline"
+    ]
+  },
+  {
+    "id": "PORT-005",
+    "category": "portability",
+    "title": "Executable moved to new path",
+    "level": "L2",
+    "severity": "S2",
+    "status": "draft",
+    "tags": [
+      "portable"
+    ]
+  },
+  {
+    "id": "ROB-001",
+    "category": "robustness",
+    "title": "Symlink loop",
+    "level": "L4",
+    "severity": "S0",
+    "status": "draft",
+    "tags": []
+  },
+  {
+    "id": "ROB-002",
+    "category": "robustness",
+    "title": "Nested Git repository",
+    "level": "L4",
+    "severity": "S1",
+    "status": "draft",
+    "tags": []
+  },
+  {
+    "id": "ROB-003",
+    "category": "robustness",
+    "title": "Very large minified file",
+    "level": "L4",
+    "severity": "S1",
+    "status": "draft",
+    "tags": []
+  },
+  {
+    "id": "ROB-004",
+    "category": "robustness",
+    "title": "Corrupted graph.db",
+    "level": "L4",
+    "severity": "S0",
+    "status": "draft",
+    "tags": []
+  },
+  {
+    "id": "ROB-005",
+    "category": "robustness",
+    "title": "Disk full during publish",
+    "level": "L4",
+    "severity": "S0",
+    "status": "draft",
+    "tags": []
+  },
+  {
+    "id": "ROB-006",
+    "category": "robustness",
+    "title": "Path case collision",
+    "level": "L4",
+    "severity": "S1",
+    "status": "draft",
+    "tags": []
+  }
+]

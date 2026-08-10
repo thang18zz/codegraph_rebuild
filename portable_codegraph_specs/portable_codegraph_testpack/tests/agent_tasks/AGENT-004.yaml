@@ -1,0 +1,97 @@
+id: AGENT-004
+title: Public method rename
+category: agent_tasks
+level: L3
+severity: S0
+status: draft
+tags:
+- impact
+objective: Test high-impact dependency analysis.
+fixture:
+  type: directory
+  path: fixtures/agent_tasks/agent-004
+  description: Shared method has static and dynamic consumers.
+preconditions:
+- Portable CodeGraph executable is available.
+- Fixture source and independent ground truth are available.
+- Test starts from a clean derived .codegraph state unless stated otherwise.
+steps:
+- action: prepare
+  description: Create or reset the testcase fixture.
+- action: execute
+  description: Run the CodeGraph operation or agent benchmark described by the testcase.
+- action: capture
+  description: Capture graph output, MCP output, revisions, metrics and relevant agent/tool logs.
+- action: compare
+  description: Compare against independent ground truth and testcase expectations.
+expected:
+- condition: Agent checks impact/source/tests and avoids incomplete mass rename.
+- condition: Source repository is never modified by indexing or retrieval.
+metrics:
+- name: regression_rate
+  target: regression_rate == 0
+failure_signals:
+- CodeGraph crashes or corrupts source.
+- Result contradicts independent ground truth without uncertainty marking.
+- A LOW/UNKNOWN/STALE/PARTIAL condition is presented as complete HIGH-confidence knowledge.
+notes: ''
+benchmark:
+  baseline: same agent/model without CodeGraph
+  variant: same agent/model with Portable CodeGraph
+  required_controls:
+  - same repository revision
+  - same task prompt
+  - same model and settings
+  - fresh conversation/context
+  - repeat runs to reduce model variance
+acceptance:
+  all_must_pass: true
+  criteria:
+  - Agent does not blindly mass-rename from incomplete graph.
+  - Impact/source/tests inspected.
+  - All supported callers updated correctly.
+  - Dynamic uncertainty is acknowledged/handled.
+  - Regression rate == 0.
+  hard_fail_if:
+  - Any repository source file is corrupted or modified by indexing/retrieval unless mutation is an explicit testcase
+    step.
+  - CodeGraph reports HIGH/complete certainty that contradicts the independent oracle for an S0/S1 semantic fact.
+  - A STALE/PARTIAL/LOW/UNKNOWN condition that materially affects the test is silently hidden.
+  - The testcase uses CodeGraph output itself as the ground-truth oracle.
+  result_rule: PASS only when every mandatory criterion and metric target passes. Otherwise FAIL; use SKIP only
+    for explicitly unavailable platform/capability with recorded reason.
+autonomous_execution:
+  human_help_required: false
+  isolation: Create a fresh temporary directory or disposable Git worktree. Never run destructive mutations on a
+    user's real repository.
+  fixture_recipe:
+  - Create public method with static callers and one dynamic/config consumer.
+  - Task asks rename.
+  - Tests cover static paths and config fixture identifies dynamic path.
+  oracle_creation:
+  - Before running CodeGraph, write an independent truth manifest from this testcase recipe.
+  - Store expected entities/relations/regions/safety states in `expected/` under the temporary fixture.
+  - The oracle must be derived from fixture source/generator declarations, never copied from CodeGraph output.
+  - Hash the fixture source tree before CodeGraph execution so unintended source mutation can be detected.
+  execution_steps:
+  - Resolve the portable CodeGraph binary from runner configuration; do not install global dependencies.
+  - Create/reset the disposable fixture exactly from `fixture_recipe`.
+  - Create and freeze the independent oracle and initial source-tree hash.
+  - Run the testcase operations from `steps`, using direct-path CLI/MCP invocation.
+  - Capture stdout, stderr, exit code, `codegraph.py`, status, relevant MCP responses, revision metadata, process
+    metrics, and final source-tree hash.
+  - For agent benchmarks, run baseline and CodeGraph variant from identical clean fixture copies and identical agent/model
+    settings.
+  - Evaluate every item in `acceptance.criteria` and every metric target.
+  - Check every item in `acceptance.hard_fail_if`.
+  - Write machine-readable `result.yaml` and preserve logs/artifacts under a testcase result directory.
+  - Return PASS only under `acceptance.result_rule`.
+  required_artifacts:
+  - fixture source or generator seed
+  - independent expected/oracle files
+  - source-tree hash before and after
+  - CodeGraph command log
+  - status/revision snapshot
+  - relevant `codegraph.py`/MCP output
+  - metric measurements
+  - result.yaml

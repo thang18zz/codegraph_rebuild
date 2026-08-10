@@ -1,0 +1,38 @@
+id: CATEGORY-000
+title: Short testcase title
+category: parsing
+level: L0
+severity: S1
+status: draft
+tags: []
+
+objective: >
+  Điều testcase cần chứng minh.
+
+fixture:
+  type: inline|directory|generated_repo
+  path: fixtures/example
+  description: >
+
+preconditions:
+  - CodeGraph executable available.
+  - Fixture is clean.
+
+steps:
+  - action: init
+    command: "codegraph init"
+  - action: query
+    command: "codegraph status"
+
+expected:
+  - condition: "Expected behavior"
+  - condition: "No destructive side effect"
+
+metrics:
+  - name: example_metric
+    target: ">= 0.95"
+
+failure_signals:
+  - "Unexpected behavior"
+
+notes: ""
