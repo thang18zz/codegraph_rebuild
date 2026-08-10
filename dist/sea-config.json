@@ -1,0 +1,22 @@
+{
+  "main": "/home/hakai/opencode_project/codegraph_rebuild/dist/codegraph.bundle.mjs",
+  "mainFormat": "module",
+  "executable": "/home/hakai/.config/nvm/versions/node/v26.7.0/bin/node",
+  "output": "/home/hakai/opencode_project/codegraph_rebuild/dist/codegraph",
+  "disableExperimentalSEAWarning": true,
+  "useSnapshot": false,
+  "useCodeCache": false,
+  "execArgv": [
+    "--no-warnings"
+  ],
+  "execArgvExtension": "none",
+  "assets": {
+    "tree-sitter.wasm": "/home/hakai/opencode_project/codegraph_rebuild/node_modules/web-tree-sitter/web-tree-sitter.wasm",
+    "tree-sitter-python.wasm": "/home/hakai/opencode_project/codegraph_rebuild/node_modules/@vscode/tree-sitter-wasm/wasm/tree-sitter-python.wasm",
+    "tree-sitter-javascript.wasm": "/home/hakai/opencode_project/codegraph_rebuild/node_modules/@vscode/tree-sitter-wasm/wasm/tree-sitter-javascript.wasm",
+    "tree-sitter-typescript.wasm": "/home/hakai/opencode_project/codegraph_rebuild/node_modules/@vscode/tree-sitter-wasm/wasm/tree-sitter-typescript.wasm",
+    "tree-sitter-tsx.wasm": "/home/hakai/opencode_project/codegraph_rebuild/node_modules/@vscode/tree-sitter-wasm/wasm/tree-sitter-tsx.wasm",
+    "tree-sitter-java.wasm": "/home/hakai/opencode_project/codegraph_rebuild/node_modules/@vscode/tree-sitter-wasm/wasm/tree-sitter-java.wasm",
+    "tree-sitter-go.wasm": "/home/hakai/opencode_project/codegraph_rebuild/node_modules/@vscode/tree-sitter-wasm/wasm/tree-sitter-go.wasm"
+  }
+}
