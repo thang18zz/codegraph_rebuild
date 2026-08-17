@@ -1,0 +1,151 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "id": "exact_symbol",
+      "fixture": "auth",
+      "request": { "task": "inspect token refresh", "focus": "auth.TokenService.refresh", "budget": 3000 },
+      "required_entities": ["auth.TokenService.refresh"],
+      "acceptable_entities": [],
+      "forbidden_entities": [],
+      "expected_retrieval_status": "EXACT",
+      "forbidden_safety_states": ["SOURCE_INSPECTION_REQUIRED"]
+    },
+    {
+      "id": "qualified_symbol",
+      "fixture": "duplicate_refresh",
+      "request": { "task": "inspect refresh", "focus": "service_b.User.refresh", "budget": 3000 },
+      "required_entities": ["service_b.User.refresh"],
+      "acceptable_entities": [],
+      "forbidden_entities": ["service_a.User.refresh"],
+      "expected_retrieval_status": "EXACT"
+    },
+    {
+      "id": "same_name_ambiguity",
+      "fixture": "duplicate_refresh",
+      "request": { "task": "inspect refresh", "focus": "refresh", "budget": 3000 },
+      "required_entities": ["service_a.User.refresh", "service_b.User.refresh"],
+      "acceptable_entities": [],
+      "forbidden_entities": [],
+      "expected_retrieval_status": "WEAK",
+      "required_safety_states": ["SOURCE_INSPECTION_REQUIRED"],
+      "required_risks": ["AMBIGUOUS_SYMBOL"]
+    },
+    {
+      "id": "fts_wording",
+      "fixture": "documentation",
+      "request": { "task": "renew expired session credentials", "budget": 3000 },
+      "required_entities": ["docs.rotate_credentials"],
+      "acceptable_entities": [],
+      "forbidden_entities": [],
+      "expected_retrieval_status": "STRONG",
+      "required_evidence": ["FTS_MATCH"]
+    },
+    {
+      "id": "no_match",
+      "fixture": "entry_trap",
+      "request": { "task": "quantum invoice teleportation", "budget": 3000 },
+      "required_entities": [],
+      "acceptable_entities": [],
+      "forbidden_entities": ["alpha.main", "alpha.handler", "billing.checkout"],
+      "expected_retrieval_status": "NO_MATCH",
+      "expected_entities_empty": true,
+      "expected_relations_empty": true,
+      "required_safety_states": ["SOURCE_INSPECTION_REQUIRED"],
+      "forbidden_safety_states": ["NAVIGATION_SAFE"]
+    },
+    {
+      "id": "generic_query",
+      "fixture": "generic",
+      "request": { "task": "run service", "budget": 3000 },
+      "required_entities": ["generic.run", "generic.service"],
+      "acceptable_entities": [],
+      "forbidden_entities": ["generic.handler"],
+      "expected_retrieval_status": "WEAK",
+      "required_safety_states": ["SOURCE_INSPECTION_REQUIRED"]
+    },
+    {
+      "id": "entry_point_no_match_trap",
+      "fixture": "entry_trap",
+      "request": { "task": "nonexistent orbital compiler", "budget": 3000 },
+      "required_entities": [],
+      "acceptable_entities": [],
+      "forbidden_entities": ["alpha.main", "alpha.handler", "billing.checkout"],
+      "expected_retrieval_status": "NO_MATCH",
+      "expected_entities_empty": true,
+      "expected_relations_empty": true,
+      "required_safety_states": ["SOURCE_INSPECTION_REQUIRED"],
+      "forbidden_safety_states": ["NAVIGATION_SAFE"]
+    },
+    {
+      "id": "generated_noise",
+      "fixture": "generated_noise",
+      "request": { "task": "inspect process_order", "budget": 3000 },
+      "required_entities": ["app.process_order"],
+      "acceptable_entities": ["generated.client.process_order"],
+      "forbidden_entities": [],
+      "expected_retrieval_status": "STRONG",
+      "expected_first_entity": "app.process_order"
+    },
+    {
+      "id": "cross_module_flow",
+      "fixture": "cross_module",
+      "request": { "task": "inspect execute", "focus": "target.execute", "budget": 3000 },
+      "required_entities": ["target.execute", "caller.dispatch"],
+      "acceptable_entities": [],
+      "forbidden_entities": [],
+      "expected_retrieval_status": "EXACT",
+      "required_relations": [
+        { "kind": "CALLS", "source": "caller.dispatch", "target": "target.execute" }
+      ]
+    },
+    {
+      "id": "dynamic_unsupported_impact",
+      "fixture": "unsupported_impact",
+      "request": { "task": "what breaks if I remove public_api?", "focus": "public_api", "budget": 3000 },
+      "required_entities": ["api.public_api"],
+      "acceptable_entities": [],
+      "forbidden_entities": [],
+      "expected_retrieval_status": "EXACT",
+      "expected_impact": "INCOMPLETE",
+      "required_safety_states": ["IMPACT_INCOMPLETE", "SOURCE_INSPECTION_REQUIRED"]
+    },
+    {
+      "id": "broad_routing",
+      "fixture": "cross_module",
+      "request": { "task": "show entire repository", "budget": 3000 },
+      "required_entities": [],
+      "acceptable_entities": [],
+      "forbidden_entities": [],
+      "expected_retrieval_status": "ROUTING",
+      "expected_entities_empty": true,
+      "required_safety_states": ["SOURCE_INSPECTION_REQUIRED"]
+    },
+    {
+      "id": "empty_tokens",
+      "fixture": "entry_trap",
+      "request": { "task": "!!! ???", "budget": 3000 },
+      "required_entities": [],
+      "acceptable_entities": [],
+      "forbidden_entities": ["alpha.main", "alpha.handler", "billing.checkout"],
+      "expected_retrieval_status": "NO_MATCH",
+      "expected_entities_empty": true,
+      "expected_relations_empty": true,
+      "required_safety_states": ["SOURCE_INSPECTION_REQUIRED"]
+    },
+    {
+      "id": "no_match_impact",
+      "fixture": "unsupported_impact",
+      "request": { "task": "what breaks if I remove nonexistent_api?", "budget": 3000 },
+      "required_entities": [],
+      "acceptable_entities": [],
+      "forbidden_entities": ["api.public_api"],
+      "expected_retrieval_status": "NO_MATCH",
+      "expected_entities_empty": true,
+      "expected_relations_empty": true,
+      "expected_impact": "INCOMPLETE",
+      "required_safety_states": ["IMPACT_INCOMPLETE", "SOURCE_INSPECTION_REQUIRED"],
+      "forbidden_safety_states": ["NAVIGATION_SAFE"]
+    }
+  ]
+}

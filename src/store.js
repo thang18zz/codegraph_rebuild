@@ -693,26 +693,15 @@ export class SqliteGraphStore {
       .flatMap((term) => term.toLocaleLowerCase("en-US").match(/[\p{L}\p{N}_]+/gu) ?? [])
       .filter((token) => token.length > 1)
       .slice(0, 12);
-    if (tokens.length === 0) {
-      return this.db.prepare("SELECT * FROM entities ORDER BY qualified_name LIMIT ?").all(limit);
-    }
+    if (tokens.length === 0) return [];
     const expression = tokens.map((token) => `"${token.replaceAll('"', '""')}"*`).join(" OR ");
-    try {
-      return this.db.prepare(`
-        SELECT e.*, bm25(entity_fts, 0, 8, 6, 3, 2, 2, 1) AS rank
-        FROM entity_fts JOIN entities e USING(stable_id)
-        WHERE entity_fts MATCH ?
-        ORDER BY rank, e.qualified_name
-        LIMIT ?
-      `).all(expression, limit);
-    } catch {
-      const pattern = `%${tokens[0]}%`;
-      return this.db.prepare(`
-        SELECT * FROM entities
-        WHERE name LIKE ? OR qualified_name LIKE ? OR file_path LIKE ?
-        ORDER BY qualified_name LIMIT ?
-      `).all(pattern, pattern, pattern, limit);
-    }
+    return this.db.prepare(`
+      SELECT e.*, bm25(entity_fts, 0, 8, 6, 3, 2, 2, 1) AS rank
+      FROM entity_fts JOIN entities e USING(stable_id)
+      WHERE entity_fts MATCH ?
+      ORDER BY rank, e.qualified_name
+      LIMIT ?
+    `).all(expression, limit);
   }
 
   quickCheck() {

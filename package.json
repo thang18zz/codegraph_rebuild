@@ -8,6 +8,7 @@
     "codegraph": "bin/codegraph.js"
   },
   "scripts": {
+    "benchmark": "node benchmark/runner/run.js",
     "build": "node scripts/build.js",
     "check": "node --check bin/codegraph.js && node --test",
     "test": "node --test",

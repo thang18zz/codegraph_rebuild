@@ -1,8 +1,13 @@
 import { randomUUID } from "node:crypto";
-import { INCOMPLETE_RISKS, MIN_MCP_BUDGET, SAFETY_STATE } from "./constants.js";
+import {
+  INCOMPLETE_RISKS,
+  MIN_MCP_BUDGET,
+  RETRIEVAL_STATUS,
+  SAFETY_STATE,
+} from "./constants.js";
 import {
   budgetByteLimit,
-  estimateTokens,
+  estimateBudgetUnits,
   utf8Bytes,
 } from "./context-map.js";
 import { readConfig } from "./config.js";
@@ -12,6 +17,18 @@ import { artifactPaths, synchronizeProject } from "./sync.js";
 
 const BROAD_QUERY = /\b(show|list|return|dump|describe)\b.{0,20}\b(entire|whole|all)\b.{0,20}\b(repository|codebase|graph|symbols?)\b/iu;
 const IMPACT_QUERY = /\b(impact|change|breaks?|signature|contract|endpoint|callers?|references?|invokes?|visibility|private|public|rename|remove|delete|drop|retire|replace|deprecat(?:e|ion)|alter|modify|schema|migration|public api|shared type|dependency|cross[- ]service|authentication|authorization|route removal|build|deployment)\b/iu;
+const GENERIC_QUERY_TOKENS = new Set([
+  "data",
+  "find",
+  "get",
+  "handler",
+  "new",
+  "old",
+  "run",
+  "service",
+  "set",
+  "user",
+]);
 
 function tokens(value) {
   return (value.toLocaleLowerCase("en-US").match(/[\p{L}\p{N}_]+/gu) ?? [])
@@ -26,7 +43,8 @@ function pathDescriptor(path) {
   };
 }
 
-function entityView(entity) {
+function entityView(entity, initialCandidates) {
+  const candidate = initialCandidates.get(entity.stable_id);
   return {
     stable_id: entity.stable_id,
     kind: entity.kind,
@@ -41,6 +59,8 @@ function entityView(entity) {
     semantic_tags: entity.semantic_tags,
     risk_flags: entity.risk_flags,
     source_location: entity.source_location,
+    selection_origin: candidate ? "QUERY_MATCH" : "GRAPH_EXPANSION",
+    ...(candidate ? { match_evidence: candidate.evidence } : {}),
   };
 }
 
@@ -59,7 +79,24 @@ function relationView(relation, entityById) {
   };
 }
 
-function scoreEntity(entity, queryTokens, focus, knownSymbols, ftsOrder) {
+function normalized(value) {
+  return String(value ?? "").toLocaleLowerCase("en-US");
+}
+
+function rankingPrior(entity) {
+  let score = 0;
+  if (entity.semantic_tags.some((tag) => tag.startsWith("entry_point:"))) score += 20;
+  if (entity.semantic_tags.includes("public")) score += 10;
+  if (entity.classification === "FIRST_PARTY") score += 10;
+  if (entity.confidence === "HIGH") score += 5;
+  if (entity.classification === "GENERATED") score -= 60;
+  return score;
+}
+
+function retrievalCandidate(entity, queryTokens, focus, knownSymbols, ftsOrder) {
+  const name = normalized(entity.name);
+  const qualifiedName = normalized(entity.qualified_name);
+  const stableId = normalized(entity.stable_id);
   const haystack = [
     entity.name,
     entity.qualified_name,
@@ -67,28 +104,110 @@ function scoreEntity(entity, queryTokens, focus, knownSymbols, ftsOrder) {
     entity.signature,
     ...entity.semantic_tags,
   ].join(" ").toLocaleLowerCase("en-US");
-  let score = Math.max(0, 100 - (ftsOrder.get(entity.stable_id) ?? 100));
+  const evidence = new Set();
+  const matchedQueryTokens = new Set();
+  let evidenceStrength = 0;
+  const addEvidence = (kind, strength) => {
+    evidence.add(kind);
+    evidenceStrength = Math.max(evidenceStrength, strength);
+  };
+
+  const ftsIndex = ftsOrder.get(entity.stable_id);
+  if (ftsIndex !== undefined) addEvidence("FTS_MATCH", 700);
   for (const token of queryTokens) {
-    if (entity.name.toLocaleLowerCase("en-US") === token) score += 80;
-    else if (haystack.includes(token)) score += 15;
+    if (name === token) {
+      addEvidence("NAME_EXACT", 800);
+      matchedQueryTokens.add(token);
+    } else if (haystack.includes(token)) {
+      addEvidence("QUERY_TOKEN_MATCH", 500);
+      matchedQueryTokens.add(token);
+    }
   }
   if (focus) {
-    const normalizedFocus = focus.toLocaleLowerCase("en-US");
-    if (entity.name.toLocaleLowerCase("en-US") === normalizedFocus
-        || entity.qualified_name.toLocaleLowerCase("en-US") === normalizedFocus
-        || (normalizedFocus.length > 1 && haystack.includes(normalizedFocus))) {
-      score += 100;
+    const normalizedFocus = normalized(focus);
+    if (qualifiedName === normalizedFocus || stableId === normalizedFocus) {
+      addEvidence("FOCUS_QUALIFIED_EXACT", entity.kind === "module" ? 450 : 950);
+    } else if (name === normalizedFocus) {
+      addEvidence("FOCUS_NAME_EXACT", entity.kind === "module" ? 450 : 900);
+    } else if (normalizedFocus.length > 1 && haystack.includes(normalizedFocus)) {
+      addEvidence("FOCUS_SUBSTRING", 350);
     }
   }
   for (const symbol of knownSymbols) {
-    const known = symbol.toLocaleLowerCase("en-US");
-    if (entity.qualified_name.toLocaleLowerCase("en-US") === known
-        || entity.name.toLocaleLowerCase("en-US") === known) score += 150;
-    else if (known.length > 1 && haystack.includes(known)) score += 60;
+    const known = normalized(symbol);
+    if (qualifiedName === known || stableId === known) {
+      addEvidence("KNOWN_SYMBOL_QUALIFIED_EXACT", 1000);
+    } else if (name === known) addEvidence("KNOWN_SYMBOL_NAME_EXACT", 900);
+    else if (known.length > 1 && haystack.includes(known)) {
+      addEvidence("KNOWN_SYMBOL_SUBSTRING", 400);
+    }
   }
-  if (entity.semantic_tags.some((tag) => tag.startsWith("entry_point:"))) score += 20;
-  if (entity.classification === "GENERATED") score -= 60;
-  return score;
+  if (evidence.size === 0) return null;
+  const priorScore = rankingPrior(entity);
+  const ftsScore = ftsIndex === undefined ? 0 : Math.max(0, 100 - ftsIndex);
+  return {
+    entity,
+    evidence: [...evidence].sort(),
+    evidenceStrength,
+    matchedQueryTokens: [...matchedQueryTokens],
+    priorScore,
+    score: evidenceStrength + ftsScore + priorScore,
+  };
+}
+
+export function rankRetrievalCandidates(entities, {
+  queryTokens,
+  focus,
+  knownSymbols,
+  ftsOrder,
+}) {
+  return entities
+    .map((entity) => retrievalCandidate(entity, queryTokens, focus, knownSymbols, ftsOrder))
+    .filter(Boolean)
+    .sort((left, right) => right.score - left.score
+      || left.entity.qualified_name.localeCompare(right.entity.qualified_name));
+}
+
+function focusAnchors(candidates, focus) {
+  if (!focus) return [];
+  const qualified = candidates.filter((candidate) => (
+    candidate.entity.kind !== "module"
+    && candidate.evidence.includes("FOCUS_QUALIFIED_EXACT")
+  ));
+  if (qualified.length > 0) return qualified;
+  return candidates.filter((candidate) => (
+    candidate.entity.kind !== "module"
+    && candidate.evidence.includes("FOCUS_NAME_EXACT")
+  ));
+}
+
+function retrievalStatus(entities, candidates, focus) {
+  if (candidates.length === 0) return RETRIEVAL_STATUS.NO_MATCH;
+  if (candidates.some((candidate) => (
+    (candidate.entity.kind !== "module" && candidate.evidence.includes("FOCUS_QUALIFIED_EXACT"))
+    || candidate.evidence.includes("KNOWN_SYMBOL_QUALIFIED_EXACT")
+  ))) return RETRIEVAL_STATUS.EXACT;
+
+  const normalizedFocus = normalized(focus);
+  const exactFocusNames = focus
+    ? entities.filter((entity) => entity.kind !== "module" && normalized(entity.name) === normalizedFocus)
+    : [];
+  if (exactFocusNames.length === 1
+      && candidates.some((candidate) => candidate.evidence.includes("FOCUS_NAME_EXACT"))) {
+    return RETRIEVAL_STATUS.EXACT;
+  }
+  if (exactFocusNames.length > 1) return RETRIEVAL_STATUS.WEAK;
+
+  const strong = candidates.some((candidate) => {
+    const meaningfulTokens = candidate.matchedQueryTokens.filter((token) => (
+      !GENERIC_QUERY_TOKENS.has(token)
+    ));
+    return (candidate.evidence.includes("NAME_EXACT") && meaningfulTokens.length > 0)
+      || meaningfulTokens.length > 1
+      || (candidate.evidence.includes("FTS_MATCH") && meaningfulTokens.length > 0)
+      || candidate.evidence.includes("KNOWN_SYMBOL_NAME_EXACT");
+  });
+  return strong ? RETRIEVAL_STATUS.STRONG : RETRIEVAL_STATUS.WEAK;
 }
 
 function selectedRegions(snapshot, selectedEntities) {
@@ -125,7 +244,7 @@ function unsupportedPaths(snapshot) {
   return uniqueSorted((snapshot.health.unsupported_files ?? []).map((file) => file.path));
 }
 
-function safetyFor(snapshot, risks, impact, uncertainRelations) {
+function safetyFor(snapshot, risks, impact, uncertainRelations, retrievalStatus_) {
   const states = [];
   if (snapshot.status === "PARTIAL") states.push(SAFETY_STATE.GRAPH_PARTIAL);
   if (snapshot.status === "STALE") states.push(SAFETY_STATE.GRAPH_STALE);
@@ -136,20 +255,28 @@ function safetyFor(snapshot, risks, impact, uncertainRelations) {
   if (impact) states.push(SAFETY_STATE.IMPACT_INCOMPLETE);
   if (incomplete) states.push(SAFETY_STATE.SOURCE_INSPECTION_REQUIRED);
   if (impact) states.push(SAFETY_STATE.SOURCE_INSPECTION_REQUIRED);
+  if ([
+    RETRIEVAL_STATUS.NO_MATCH,
+    RETRIEVAL_STATUS.ROUTING,
+    RETRIEVAL_STATUS.WEAK,
+  ].includes(retrievalStatus_)) {
+    states.push(SAFETY_STATE.SOURCE_INSPECTION_REQUIRED);
+  }
   if (states.length === 0) states.push(SAFETY_STATE.NAVIGATION_SAFE);
   return uniqueSorted(states);
 }
 
 function measureResponse(response) {
   response.response_bytes = 0;
-  response.response_tokens = 0;
+  response.response_budget_units = 0;
   while (true) {
     const serialized = JSON.stringify(response);
     const bytes = utf8Bytes(serialized);
-    const tokens_ = estimateTokens(serialized);
-    if (response.response_bytes === bytes && response.response_tokens === tokens_) return bytes;
+    const budgetUnits = estimateBudgetUnits(serialized);
+    if (response.response_bytes === bytes
+        && response.response_budget_units === budgetUnits) return bytes;
     response.response_bytes = bytes;
-    response.response_tokens = tokens_;
+    response.response_budget_units = budgetUnits;
   }
 }
 
@@ -219,6 +346,7 @@ function trimToBudget(response, budget, impact = false) {
       context_id: response.context_id,
       graph_revision: response.graph_revision,
       graph_status: response.graph_status,
+      retrieval_status: response.retrieval_status,
       safety_state: safetyStates[0],
       safety_states: safetyStates,
       truncated: true,
@@ -226,7 +354,7 @@ function trimToBudget(response, budget, impact = false) {
       ...(mandatoryStale ?? {}),
       ...(mandatoryImpact ?? {}),
       response_bytes: 0,
-      response_tokens: 0,
+      response_budget_units: 0,
     };
     measureResponse(minimal);
     if (minimal.response_bytes > byteLimit) {
@@ -343,7 +471,8 @@ export async function semanticExplore(root, request, contexts = new Map()) {
 
     if (broad) {
       const risks = snapshot.health.risk_flags ?? [];
-      const safetyStates = safetyFor(snapshot, risks, impact, []);
+      const retrievalStatus_ = RETRIEVAL_STATUS.ROUTING;
+      const safetyStates = safetyFor(snapshot, risks, impact, [], retrievalStatus_);
       let response = {
         context_id: contextId,
         graph_revision: snapshot.revision,
@@ -351,6 +480,8 @@ export async function semanticExplore(root, request, contexts = new Map()) {
         last_known_good_revision: snapshot.last_known_good_revision,
         safety_state: safetyStates[0],
         safety_states: safetyStates,
+        retrieval_status: retrievalStatus_,
+        retrieval_evidence: [],
         broad_query: true,
         regions: snapshot.regions
           .filter((region) => region.stable_id !== "region:repository")
@@ -387,23 +518,25 @@ export async function semanticExplore(root, request, contexts = new Map()) {
     const queryTokens = tokens(request.task);
     const fts = store.searchEntities([request.task, request.focus ?? "", ...knownSymbols], 100);
     const ftsOrder = new Map(fts.map((row, index) => [row.stable_id, index]));
-    const selectedEntities = [...snapshot.entities]
-      .map((entity) => ({
-        entity,
-        score: scoreEntity(entity, queryTokens, request.focus, knownSymbols, ftsOrder),
-      }))
-      .filter(({ score }) => score > 0)
-      .sort((left, right) => right.score - left.score
-        || left.entity.qualified_name.localeCompare(right.entity.qualified_name))
-      .slice(0, impact ? 40 : 20)
-      .map(({ entity }) => entity);
-
-    if (selectedEntities.length === 0) {
-      selectedEntities.push(...snapshot.entities
-        .filter((entity) => entity.kind !== "module")
-        .slice(0, 5));
-    }
+    const rankedCandidates = rankRetrievalCandidates(snapshot.entities, {
+      queryTokens,
+      focus: request.focus,
+      knownSymbols,
+      ftsOrder,
+    });
+    const anchors = focusAnchors(rankedCandidates, request.focus);
+    const selectedCandidates = (anchors.length > 0 ? anchors : rankedCandidates)
+      .slice(0, impact ? 40 : 20);
+    const selectedEntities = selectedCandidates.map(({ entity }) => entity);
+    const retrievalStatus_ = retrievalStatus(snapshot.entities, selectedCandidates, request.focus);
+    const retrievalEvidence = uniqueSorted(selectedCandidates.flatMap(({ evidence }) => evidence));
     const selectedIds = new Set(selectedEntities.map((entity) => entity.stable_id));
+    const initialCandidates = new Map(selectedCandidates.map((candidate) => (
+      [candidate.entity.stable_id, candidate]
+    )));
+    const initialOrder = new Map(selectedCandidates.map((candidate, index) => (
+      [candidate.entity.stable_id, index]
+    )));
     const selectedNames = new Set(selectedEntities.map((entity) => entity.name));
     const allRelevantRelations = snapshot.relations.filter((relation) => (
       selectedIds.has(relation.src_entity_id)
@@ -420,9 +553,9 @@ export async function semanticExplore(root, request, contexts = new Map()) {
     const expandedEntities = snapshot.entities
       .filter((entity) => selectedIds.has(entity.stable_id))
       .sort((left, right) => {
-        const selectedLeft = selectedEntities.includes(left) ? 0 : 1;
-        const selectedRight = selectedEntities.includes(right) ? 0 : 1;
-        return selectedLeft - selectedRight || left.qualified_name.localeCompare(right.qualified_name);
+        const leftOrder = initialOrder.get(left.stable_id) ?? Number.MAX_SAFE_INTEGER;
+        const rightOrder = initialOrder.get(right.stable_id) ?? Number.MAX_SAFE_INTEGER;
+        return leftOrder - rightOrder || left.qualified_name.localeCompare(right.qualified_name);
       })
       .slice(0, impact ? 60 : 30);
     const entityById = new Map(snapshot.entities.map((entity) => [entity.stable_id, entity]));
@@ -441,7 +574,8 @@ export async function semanticExplore(root, request, contexts = new Map()) {
       ...relevantRelations.flatMap((relation) => relation.risk_flags),
       ambiguousShortName ? "AMBIGUOUS_SYMBOL" : null,
     ]);
-    const safetyStates = safetyFor(snapshot, risks, impact, uncertain);
+    const safetyStates = safetyFor(snapshot, risks, impact, uncertain, retrievalStatus_);
+    const noMatch = retrievalStatus_ === RETRIEVAL_STATUS.NO_MATCH;
     let response = {
       context_id: contextId,
       graph_revision: snapshot.revision,
@@ -449,14 +583,30 @@ export async function semanticExplore(root, request, contexts = new Map()) {
       last_known_good_revision: snapshot.last_known_good_revision,
       safety_state: safetyStates[0],
       safety_states: safetyStates,
-      regions: selectedRegions(snapshot, expandedEntities),
-      entities: expandedEntities.map(entityView),
+      retrieval_status: retrievalStatus_,
+      retrieval_evidence: retrievalEvidence,
+      routing_only: noMatch,
+      regions: noMatch
+        ? snapshot.regions
+          .filter((region) => region.stable_id !== "region:repository")
+          .map((region) => ({
+            id: region.stable_id,
+            name: region.name,
+            kind: region.kind,
+            path: region.path,
+            confidence: region.confidence,
+            risk_flags: region.risk_flags,
+          }))
+        : selectedRegions(snapshot, expandedEntities),
+      entities: expandedEntities.map((entity) => entityView(entity, initialCandidates)),
       relations: relevantRelations.map((relation) => relationView(relation, entityById)),
       completeness: {
-        scope: impact
+        scope: noMatch
+          ? "routing suggestions only; no semantic entity matched"
+          : (impact
           ? "direct indexed static relations at the reported graph revision"
-          : "indexed static semantics at the reported graph revision",
-        returned_results: "BUDGETED",
+          : "indexed static semantics at the reported graph revision"),
+        returned_results: noMatch ? "INTENTIONALLY_PARTIAL" : "BUDGETED",
         impact: impact && safetyStates.includes(SAFETY_STATE.IMPACT_INCOMPLETE)
           ? "INCOMPLETE"
           : (impact ? "DIRECT_STATIC" : "NOT_EVALUATED"),
@@ -474,8 +624,12 @@ export async function semanticExplore(root, request, contexts = new Map()) {
       unsupported_files: boundedUnsupportedPaths,
       truncated: relationCandidatesTruncated,
       delta: false,
-      notice: "Omission is not absence. Source code is authoritative before implementation changes.",
-      suggestions: [],
+      notice: noMatch
+        ? "No relevant semantic entity matched. Omission is not absence; inspect source."
+        : "Omission is not absence. Source code is authoritative before implementation changes.",
+      suggestions: noMatch
+        ? ["Provide focus", "Provide known_symbols", "Inspect a likely source region"]
+        : [],
     };
     if (impact) {
       response.suggestions.push("Inspect source, configuration, and tests before a destructive edit");

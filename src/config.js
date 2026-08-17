@@ -68,6 +68,7 @@ export function serializeConfig(config = DEFAULT_CONFIG) {
   return [
     "# Portable CodeGraph project configuration.",
     "# One budget unit permits at most one serialized UTF-8 byte.",
+    "# Legacy *_tokens key names below are budget units, not measured model tokens.",
     `map_target_tokens = ${config.map_target_tokens}`,
     `map_hard_cap_tokens = ${config.map_hard_cap_tokens}`,
     `mcp_default_budget = ${config.mcp_default_budget}`,

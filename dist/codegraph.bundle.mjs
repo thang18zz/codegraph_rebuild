@@ -59,6 +59,13 @@ var SAFETY_STATE = Object.freeze({
   GRAPH_STALE: "GRAPH_STALE",
   GRAPH_PARTIAL: "GRAPH_PARTIAL"
 });
+var RETRIEVAL_STATUS = Object.freeze({
+  EXACT: "EXACT",
+  STRONG: "STRONG",
+  WEAK: "WEAK",
+  NO_MATCH: "NO_MATCH",
+  ROUTING: "ROUTING"
+});
 var DEFAULT_CONFIG = Object.freeze({
   map_target_tokens: 1e3,
   map_hard_cap_tokens: 1500,
@@ -137,7 +144,7 @@ function utf8Bytes(value) {
 function budgetByteLimit(budget) {
   return budget * BUDGET_BYTES_PER_UNIT;
 }
-function estimateTokens(value) {
+function estimateBudgetUnits(value) {
   return Math.ceil(utf8Bytes(value) / BUDGET_BYTES_PER_UNIT);
 }
 function pythonString(value) {
@@ -312,11 +319,11 @@ function compileContextMap(graph, revision, config) {
   let content = lines.join("");
   if (truncated) content = content.replace("MAP_TRUNCATED = False", "MAP_TRUNCATED = True");
   const bytes = utf8Bytes(content);
-  const tokens2 = estimateTokens(content);
+  const budgetUnits = estimateBudgetUnits(content);
   if (bytes > hardByteCap) {
     throw new Error(`Mandatory codegraph.py content exceeds map_hard_cap_tokens (${config.map_hard_cap_tokens})`);
   }
-  return { content, bytes, tokens: tokens2, mode, truncated };
+  return { content, bytes, budgetUnits, mode, truncated };
 }
 
 // src/config.js
@@ -385,6 +392,7 @@ function serializeConfig(config = DEFAULT_CONFIG) {
   return [
     "# Portable CodeGraph project configuration.",
     "# One budget unit permits at most one serialized UTF-8 byte.",
+    "# Legacy *_tokens key names below are budget units, not measured model tokens.",
     `map_target_tokens = ${config.map_target_tokens}`,
     `map_hard_cap_tokens = ${config.map_hard_cap_tokens}`,
     `mcp_default_budget = ${config.mcp_default_budget}`,
@@ -605,13 +613,13 @@ function semanticImports(imports) {
   }));
 }
 function semanticHash(parsedFile) {
-  const normalized = {
+  const normalized2 = {
     entities: parsedFile.entities.map(semanticEntity).sort((a, b) => compareText(a.stable_id, b.stable_id)),
     relations: parsedFile.relations.map(semanticRelation).sort((a, b) => compareText(JSON.stringify(a), JSON.stringify(b))),
     imports: semanticImports(parsedFile.imports),
     risk_flags: uniqueSorted(parsedFile.risk_flags)
   };
-  return hashBytes(JSON.stringify(normalized));
+  return hashBytes(JSON.stringify(normalized2));
 }
 function makeCondition(path, node, expression = node.text) {
   return {
@@ -5664,11 +5672,11 @@ function normalizePath(path) {
   return path.split(sep).join("/");
 }
 function wildcardToRegExp(pattern) {
-  const normalized = pattern.replace(/^\//u, "").replace(/\/$/u, "/**");
+  const normalized2 = pattern.replace(/^\//u, "").replace(/\/$/u, "/**");
   let expression = "";
-  for (let index = 0; index < normalized.length; index += 1) {
-    const character = normalized[index];
-    if (character === "*" && normalized[index + 1] === "*") {
+  for (let index = 0; index < normalized2.length; index += 1) {
+    const character = normalized2[index];
+    if (character === "*" && normalized2[index + 1] === "*") {
       expression += ".*";
       index += 1;
     } else if (character === "*") {
@@ -5711,18 +5719,18 @@ function generatedByPath(relativePath) {
   return /(^|\/)(generated|gen|autogen|vendor)(\/|$)/iu.test(relativePath) || /(?:\.generated|\.g)\.[^.]+$/iu.test(relativePath) || /(?:^|\/)(?:package-lock|yarn\.lock|pnpm-lock)\./iu.test(relativePath);
 }
 function classifyFile(relativePath, prefix = "") {
-  const normalized = normalizePath(relativePath);
-  const file = basename(normalized).toLowerCase();
-  if (generatedByPath(normalized) || /generated|do not edit/iu.test(prefix)) {
+  const normalized2 = normalizePath(relativePath);
+  const file = basename(normalized2).toLowerCase();
+  if (generatedByPath(normalized2) || /generated|do not edit/iu.test(prefix)) {
     return CLASSIFICATION.GENERATED;
   }
-  if (/(^|\/)(test|tests|spec|specs|__tests__)(\/|$)/iu.test(normalized) || /(?:^|[._-])(?:test|spec)\.[^.]+$/iu.test(file)) {
+  if (/(^|\/)(test|tests|spec|specs|__tests__)(\/|$)/iu.test(normalized2) || /(?:^|[._-])(?:test|spec)\.[^.]+$/iu.test(file)) {
     return CLASSIFICATION.TEST;
   }
-  if (/(^|\/)(infra|infrastructure|terraform|deploy|deployment)(\/|$)/iu.test(normalized)) {
+  if (/(^|\/)(infra|infrastructure|terraform|deploy|deployment)(\/|$)/iu.test(normalized2)) {
     return CLASSIFICATION.INFRASTRUCTURE;
   }
-  if (/(?:^|\/)(?:makefile|dockerfile)$/iu.test(normalized) || /\.(?:gradle|lock)$/iu.test(file)) {
+  if (/(?:^|\/)(?:makefile|dockerfile)$/iu.test(normalized2) || /\.(?:gradle|lock)$/iu.test(file)) {
     return CLASSIFICATION.BUILD;
   }
   if (/\.(?:json|toml|ya?ml|ini|properties)$/iu.test(file)) {
@@ -5904,9 +5912,9 @@ function normalizedResolverInput(parsedFiles) {
   for (const file of files) {
     file.risk_flags = withoutResolverAmbiguity(file.risk_flags);
     for (const entity of file.entities) {
-      const normalized = stableEntityId(file.language, file.path, entity.qualified_name, entity.kind);
-      normalizedIds.set(entity.stable_id, normalized);
-      entity.stable_id = normalized;
+      const normalized2 = stableEntityId(file.language, file.path, entity.qualified_name, entity.kind);
+      normalizedIds.set(entity.stable_id, normalized2);
+      entity.stable_id = normalized2;
       entity.risk_flags = withoutResolverAmbiguity(entity.risk_flags);
     }
   }
@@ -6145,7 +6153,7 @@ function profileGraph(files, entities, relations, regions, parseDurationMs = 0, 
     language_count: languages2.size,
     languages: [...languages2].sort(),
     cross_region_relation_count: crossRegion,
-    estimated_codegraph_tokens: 0,
+    codegraph_budget_units: 0,
     parse_failure_rate: files.length === 0 ? 0 : failed / files.length,
     unresolved_relation_rate: relations.length === 0 ? 0 : unresolved / relations.length,
     parse_latency_ms: parseDurationMs,
@@ -6864,26 +6872,15 @@ var SqliteGraphStore = class {
   }
   searchEntities(terms, limit = 20) {
     const tokens2 = terms.flatMap((term) => term.toLocaleLowerCase("en-US").match(/[\p{L}\p{N}_]+/gu) ?? []).filter((token) => token.length > 1).slice(0, 12);
-    if (tokens2.length === 0) {
-      return this.db.prepare("SELECT * FROM entities ORDER BY qualified_name LIMIT ?").all(limit);
-    }
+    if (tokens2.length === 0) return [];
     const expression = tokens2.map((token) => `"${token.replaceAll('"', '""')}"*`).join(" OR ");
-    try {
-      return this.db.prepare(`
-        SELECT e.*, bm25(entity_fts, 0, 8, 6, 3, 2, 2, 1) AS rank
-        FROM entity_fts JOIN entities e USING(stable_id)
-        WHERE entity_fts MATCH ?
-        ORDER BY rank, e.qualified_name
-        LIMIT ?
-      `).all(expression, limit);
-    } catch {
-      const pattern = `%${tokens2[0]}%`;
-      return this.db.prepare(`
-        SELECT * FROM entities
-        WHERE name LIKE ? OR qualified_name LIKE ? OR file_path LIKE ?
-        ORDER BY qualified_name LIMIT ?
-      `).all(pattern, pattern, pattern, limit);
-    }
+    return this.db.prepare(`
+      SELECT e.*, bm25(entity_fts, 0, 8, 6, 3, 2, 2, 1) AS rank
+      FROM entity_fts JOIN entities e USING(stable_id)
+      WHERE entity_fts MATCH ?
+      ORDER BY rank, e.qualified_name
+      LIMIT ?
+    `).all(expression, limit);
   }
   quickCheck() {
     const quick = this.db.prepare("PRAGMA quick_check").all();
@@ -7255,7 +7252,7 @@ function stateDocument(root, graph, revision, fingerprint, graphDigest, map, con
     health: graph.health,
     stale_files: graph.health.stale_files,
     parse_failures: graph.health.parse_failures,
-    codegraph_tokens: map.tokens,
+    codegraph_budget_units: map.budgetUnits,
     map_sha256: hashBytes(map.content),
     projection_config_hash: configFingerprint(config),
     generated_at: (/* @__PURE__ */ new Date()).toISOString()
@@ -7740,15 +7737,15 @@ async function materializationMatches(paths, snapshot, config) {
   const expectedMap = compileContextMap(snapshot, snapshot.revision, config);
   const expectedProfile = {
     ...snapshot.profile,
-    estimated_codegraph_tokens: expectedMap.tokens
+    codegraph_budget_units: expectedMap.budgetUnits
   };
-  if (state?.version !== VERSION || state.graph_revision !== snapshot.revision || state.graph_digest !== snapshot.graph_digest || state.source_fingerprint !== snapshot.source_fingerprint || state.semantic_config_hash !== snapshot.semantic_config_hash || state.graph_status !== snapshot.status || state.last_known_good_revision !== snapshot.last_known_good_revision || state.mode !== expectedMap.mode || JSON.stringify(state.profile) !== JSON.stringify(expectedProfile) || JSON.stringify(state.health) !== JSON.stringify(snapshot.health) || JSON.stringify(state.stale_files) !== JSON.stringify(snapshot.health.stale_files) || JSON.stringify(state.parse_failures) !== JSON.stringify(snapshot.health.parse_failures) || state.codegraph_tokens !== expectedMap.tokens || state.map_sha256 !== hashBytes(expectedMap.content) || state.projection_config_hash !== configFingerprint(config)) return false;
+  if (state?.version !== VERSION || state.graph_revision !== snapshot.revision || state.graph_digest !== snapshot.graph_digest || state.source_fingerprint !== snapshot.source_fingerprint || state.semantic_config_hash !== snapshot.semantic_config_hash || state.graph_status !== snapshot.status || state.last_known_good_revision !== snapshot.last_known_good_revision || state.mode !== expectedMap.mode || JSON.stringify(state.profile) !== JSON.stringify(expectedProfile) || JSON.stringify(state.health) !== JSON.stringify(snapshot.health) || JSON.stringify(state.stale_files) !== JSON.stringify(snapshot.health.stale_files) || JSON.stringify(state.parse_failures) !== JSON.stringify(snapshot.health.parse_failures) || state.codegraph_budget_units !== expectedMap.budgetUnits || state.map_sha256 !== hashBytes(expectedMap.content) || state.projection_config_hash !== configFingerprint(config)) return false;
   try {
     const inspected = await inspectArtifactFile(paths.map);
     if (!inspected) return false;
     const map = inspected.bytes.toString("utf8");
-    const tokens2 = estimateTokens(map);
-    return inspected.digest === hashBytes(expectedMap.content) && map.includes(`GRAPH_REVISION = ${snapshot.revision}`) && map.slice(0, 1024).includes(MAP_OWNERSHIP_MARKER) && state.map_sha256 === inspected.digest && state.codegraph_tokens === tokens2 && tokens2 <= config.map_hard_cap_tokens;
+    const budgetUnits = estimateBudgetUnits(map);
+    return inspected.digest === hashBytes(expectedMap.content) && map.includes(`GRAPH_REVISION = ${snapshot.revision}`) && map.slice(0, 1024).includes(MAP_OWNERSHIP_MARKER) && state.map_sha256 === inspected.digest && state.codegraph_budget_units === budgetUnits && budgetUnits <= config.map_hard_cap_tokens;
   } catch (error) {
     if (error.code === "ENOENT") return false;
     throw error;
@@ -7756,7 +7753,7 @@ async function materializationMatches(paths, snapshot, config) {
 }
 async function rematerialize(paths, snapshot, config) {
   const map = compileContextMap(snapshot, snapshot.revision, config);
-  snapshot.profile.estimated_codegraph_tokens = map.tokens;
+  snapshot.profile.codegraph_budget_units = map.budgetUnits;
   const state = stateDocument(
     dirname3(paths.directory),
     snapshot,
@@ -7872,7 +7869,7 @@ async function synchronizeOnce(root, { forceFull = false, revisionFloor = 0, ski
     const fingerprint = sourceFingerprint(graph.files, unsupportedFiles);
     graph.last_known_good_revision = graph.health.status === GRAPH_STATUS.FRESH ? revision : store.latestFreshRevision();
     const map = compileContextMap(graph, revision, config);
-    graph.profile.estimated_codegraph_tokens = map.tokens;
+    graph.profile.codegraph_budget_units = map.budgetUnits;
     graph.profile.sync_latency_ms = performance.now() - started;
     backup = await backupMaterialization(paths);
     publication = store.stagePublish(graph, {
@@ -8205,6 +8202,18 @@ import { watch } from "node:fs";
 import { randomUUID as randomUUID2 } from "node:crypto";
 var BROAD_QUERY = /\b(show|list|return|dump|describe)\b.{0,20}\b(entire|whole|all)\b.{0,20}\b(repository|codebase|graph|symbols?)\b/iu;
 var IMPACT_QUERY = /\b(impact|change|breaks?|signature|contract|endpoint|callers?|references?|invokes?|visibility|private|public|rename|remove|delete|drop|retire|replace|deprecat(?:e|ion)|alter|modify|schema|migration|public api|shared type|dependency|cross[- ]service|authentication|authorization|route removal|build|deployment)\b/iu;
+var GENERIC_QUERY_TOKENS = /* @__PURE__ */ new Set([
+  "data",
+  "find",
+  "get",
+  "handler",
+  "new",
+  "old",
+  "run",
+  "service",
+  "set",
+  "user"
+]);
 function tokens(value) {
   return (value.toLocaleLowerCase("en-US").match(/[\p{L}\p{N}_]+/gu) ?? []).filter((token) => token.length > 1);
 }
@@ -8215,7 +8224,8 @@ function pathDescriptor(path) {
     path_truncated: true
   };
 }
-function entityView(entity) {
+function entityView(entity, initialCandidates) {
+  const candidate = initialCandidates.get(entity.stable_id);
   return {
     stable_id: entity.stable_id,
     kind: entity.kind,
@@ -8229,7 +8239,9 @@ function entityView(entity) {
     classification: entity.classification,
     semantic_tags: entity.semantic_tags,
     risk_flags: entity.risk_flags,
-    source_location: entity.source_location
+    source_location: entity.source_location,
+    selection_origin: candidate ? "QUERY_MATCH" : "GRAPH_EXPANSION",
+    ...candidate ? { match_evidence: candidate.evidence } : {}
   };
 }
 function relationView(relation, entityById) {
@@ -8244,7 +8256,22 @@ function relationView(relation, entityById) {
     source_location: relation.source_location
   };
 }
-function scoreEntity(entity, queryTokens, focus, knownSymbols, ftsOrder) {
+function normalized(value) {
+  return String(value ?? "").toLocaleLowerCase("en-US");
+}
+function rankingPrior(entity) {
+  let score = 0;
+  if (entity.semantic_tags.some((tag) => tag.startsWith("entry_point:"))) score += 20;
+  if (entity.semantic_tags.includes("public")) score += 10;
+  if (entity.classification === "FIRST_PARTY") score += 10;
+  if (entity.confidence === "HIGH") score += 5;
+  if (entity.classification === "GENERATED") score -= 60;
+  return score;
+}
+function retrievalCandidate(entity, queryTokens, focus, knownSymbols, ftsOrder) {
+  const name2 = normalized(entity.name);
+  const qualifiedName = normalized(entity.qualified_name);
+  const stableId = normalized(entity.stable_id);
   const haystack = [
     entity.name,
     entity.qualified_name,
@@ -8252,25 +8279,83 @@ function scoreEntity(entity, queryTokens, focus, knownSymbols, ftsOrder) {
     entity.signature,
     ...entity.semantic_tags
   ].join(" ").toLocaleLowerCase("en-US");
-  let score = Math.max(0, 100 - (ftsOrder.get(entity.stable_id) ?? 100));
+  const evidence = /* @__PURE__ */ new Set();
+  const matchedQueryTokens = /* @__PURE__ */ new Set();
+  let evidenceStrength = 0;
+  const addEvidence = (kind, strength) => {
+    evidence.add(kind);
+    evidenceStrength = Math.max(evidenceStrength, strength);
+  };
+  const ftsIndex = ftsOrder.get(entity.stable_id);
+  if (ftsIndex !== void 0) addEvidence("FTS_MATCH", 700);
   for (const token of queryTokens) {
-    if (entity.name.toLocaleLowerCase("en-US") === token) score += 80;
-    else if (haystack.includes(token)) score += 15;
+    if (name2 === token) {
+      addEvidence("NAME_EXACT", 800);
+      matchedQueryTokens.add(token);
+    } else if (haystack.includes(token)) {
+      addEvidence("QUERY_TOKEN_MATCH", 500);
+      matchedQueryTokens.add(token);
+    }
   }
   if (focus) {
-    const normalizedFocus = focus.toLocaleLowerCase("en-US");
-    if (entity.name.toLocaleLowerCase("en-US") === normalizedFocus || entity.qualified_name.toLocaleLowerCase("en-US") === normalizedFocus || normalizedFocus.length > 1 && haystack.includes(normalizedFocus)) {
-      score += 100;
+    const normalizedFocus = normalized(focus);
+    if (qualifiedName === normalizedFocus || stableId === normalizedFocus) {
+      addEvidence("FOCUS_QUALIFIED_EXACT", entity.kind === "module" ? 450 : 950);
+    } else if (name2 === normalizedFocus) {
+      addEvidence("FOCUS_NAME_EXACT", entity.kind === "module" ? 450 : 900);
+    } else if (normalizedFocus.length > 1 && haystack.includes(normalizedFocus)) {
+      addEvidence("FOCUS_SUBSTRING", 350);
     }
   }
   for (const symbol of knownSymbols) {
-    const known = symbol.toLocaleLowerCase("en-US");
-    if (entity.qualified_name.toLocaleLowerCase("en-US") === known || entity.name.toLocaleLowerCase("en-US") === known) score += 150;
-    else if (known.length > 1 && haystack.includes(known)) score += 60;
+    const known = normalized(symbol);
+    if (qualifiedName === known || stableId === known) {
+      addEvidence("KNOWN_SYMBOL_QUALIFIED_EXACT", 1e3);
+    } else if (name2 === known) addEvidence("KNOWN_SYMBOL_NAME_EXACT", 900);
+    else if (known.length > 1 && haystack.includes(known)) {
+      addEvidence("KNOWN_SYMBOL_SUBSTRING", 400);
+    }
   }
-  if (entity.semantic_tags.some((tag) => tag.startsWith("entry_point:"))) score += 20;
-  if (entity.classification === "GENERATED") score -= 60;
-  return score;
+  if (evidence.size === 0) return null;
+  const priorScore = rankingPrior(entity);
+  const ftsScore = ftsIndex === void 0 ? 0 : Math.max(0, 100 - ftsIndex);
+  return {
+    entity,
+    evidence: [...evidence].sort(),
+    evidenceStrength,
+    matchedQueryTokens: [...matchedQueryTokens],
+    priorScore,
+    score: evidenceStrength + ftsScore + priorScore
+  };
+}
+function rankRetrievalCandidates(entities, {
+  queryTokens,
+  focus,
+  knownSymbols,
+  ftsOrder
+}) {
+  return entities.map((entity) => retrievalCandidate(entity, queryTokens, focus, knownSymbols, ftsOrder)).filter(Boolean).sort((left, right) => right.score - left.score || left.entity.qualified_name.localeCompare(right.entity.qualified_name));
+}
+function focusAnchors(candidates, focus) {
+  if (!focus) return [];
+  const qualified = candidates.filter((candidate) => candidate.entity.kind !== "module" && candidate.evidence.includes("FOCUS_QUALIFIED_EXACT"));
+  if (qualified.length > 0) return qualified;
+  return candidates.filter((candidate) => candidate.entity.kind !== "module" && candidate.evidence.includes("FOCUS_NAME_EXACT"));
+}
+function retrievalStatus(entities, candidates, focus) {
+  if (candidates.length === 0) return RETRIEVAL_STATUS.NO_MATCH;
+  if (candidates.some((candidate) => candidate.entity.kind !== "module" && candidate.evidence.includes("FOCUS_QUALIFIED_EXACT") || candidate.evidence.includes("KNOWN_SYMBOL_QUALIFIED_EXACT"))) return RETRIEVAL_STATUS.EXACT;
+  const normalizedFocus = normalized(focus);
+  const exactFocusNames = focus ? entities.filter((entity) => entity.kind !== "module" && normalized(entity.name) === normalizedFocus) : [];
+  if (exactFocusNames.length === 1 && candidates.some((candidate) => candidate.evidence.includes("FOCUS_NAME_EXACT"))) {
+    return RETRIEVAL_STATUS.EXACT;
+  }
+  if (exactFocusNames.length > 1) return RETRIEVAL_STATUS.WEAK;
+  const strong = candidates.some((candidate) => {
+    const meaningfulTokens = candidate.matchedQueryTokens.filter((token) => !GENERIC_QUERY_TOKENS.has(token));
+    return candidate.evidence.includes("NAME_EXACT") && meaningfulTokens.length > 0 || meaningfulTokens.length > 1 || candidate.evidence.includes("FTS_MATCH") && meaningfulTokens.length > 0 || candidate.evidence.includes("KNOWN_SYMBOL_NAME_EXACT");
+  });
+  return strong ? RETRIEVAL_STATUS.STRONG : RETRIEVAL_STATUS.WEAK;
 }
 function selectedRegions(snapshot, selectedEntities) {
   const selectedIds = new Set(selectedEntities.map((entity) => entity.region_id));
@@ -8297,7 +8382,7 @@ function staleProvenance(snapshot) {
 function unsupportedPaths(snapshot) {
   return uniqueSorted((snapshot.health.unsupported_files ?? []).map((file) => file.path));
 }
-function safetyFor(snapshot, risks, impact, uncertainRelations) {
+function safetyFor(snapshot, risks, impact, uncertainRelations, retrievalStatus_) {
   const states = [];
   if (snapshot.status === "PARTIAL") states.push(SAFETY_STATE.GRAPH_PARTIAL);
   if (snapshot.status === "STALE") states.push(SAFETY_STATE.GRAPH_STALE);
@@ -8306,19 +8391,26 @@ function safetyFor(snapshot, risks, impact, uncertainRelations) {
   if (impact) states.push(SAFETY_STATE.IMPACT_INCOMPLETE);
   if (incomplete) states.push(SAFETY_STATE.SOURCE_INSPECTION_REQUIRED);
   if (impact) states.push(SAFETY_STATE.SOURCE_INSPECTION_REQUIRED);
+  if ([
+    RETRIEVAL_STATUS.NO_MATCH,
+    RETRIEVAL_STATUS.ROUTING,
+    RETRIEVAL_STATUS.WEAK
+  ].includes(retrievalStatus_)) {
+    states.push(SAFETY_STATE.SOURCE_INSPECTION_REQUIRED);
+  }
   if (states.length === 0) states.push(SAFETY_STATE.NAVIGATION_SAFE);
   return uniqueSorted(states);
 }
 function measureResponse(response) {
   response.response_bytes = 0;
-  response.response_tokens = 0;
+  response.response_budget_units = 0;
   while (true) {
     const serialized = JSON.stringify(response);
     const bytes = utf8Bytes(serialized);
-    const tokens_ = estimateTokens(serialized);
-    if (response.response_bytes === bytes && response.response_tokens === tokens_) return bytes;
+    const budgetUnits = estimateBudgetUnits(serialized);
+    if (response.response_bytes === bytes && response.response_budget_units === budgetUnits) return bytes;
     response.response_bytes = bytes;
-    response.response_tokens = tokens_;
+    response.response_budget_units = budgetUnits;
   }
 }
 function trimToBudget(response, budget, impact = false) {
@@ -8380,6 +8472,7 @@ function trimToBudget(response, budget, impact = false) {
       context_id: response.context_id,
       graph_revision: response.graph_revision,
       graph_status: response.graph_status,
+      retrieval_status: response.retrieval_status,
       safety_state: safetyStates[0],
       safety_states: safetyStates,
       truncated: true,
@@ -8387,7 +8480,7 @@ function trimToBudget(response, budget, impact = false) {
       ...mandatoryStale ?? {},
       ...mandatoryImpact ?? {},
       response_bytes: 0,
-      response_tokens: 0
+      response_budget_units: 0
     };
     measureResponse(minimal);
     if (minimal.response_bytes > byteLimit) {
@@ -8494,7 +8587,8 @@ async function semanticExplore(root, request, contexts = /* @__PURE__ */ new Map
     const boundedUnsupportedPaths = impact ? allUnsupportedPaths.slice(0, 10) : [];
     if (broad) {
       const risks2 = snapshot.health.risk_flags ?? [];
-      const safetyStates2 = safetyFor(snapshot, risks2, impact, []);
+      const retrievalStatus_2 = RETRIEVAL_STATUS.ROUTING;
+      const safetyStates2 = safetyFor(snapshot, risks2, impact, [], retrievalStatus_2);
       let response2 = {
         context_id: contextId,
         graph_revision: snapshot.revision,
@@ -8502,6 +8596,8 @@ async function semanticExplore(root, request, contexts = /* @__PURE__ */ new Map
         last_known_good_revision: snapshot.last_known_good_revision,
         safety_state: safetyStates2[0],
         safety_states: safetyStates2,
+        retrieval_status: retrievalStatus_2,
+        retrieval_evidence: [],
         broad_query: true,
         regions: snapshot.regions.filter((region) => region.stable_id !== "region:repository").map((region) => ({ name: region.name, kind: region.kind, path: region.path })),
         entities: [],
@@ -8531,14 +8627,20 @@ async function semanticExplore(root, request, contexts = /* @__PURE__ */ new Map
     const queryTokens = tokens(request.task);
     const fts = store.searchEntities([request.task, request.focus ?? "", ...knownSymbols], 100);
     const ftsOrder = new Map(fts.map((row, index) => [row.stable_id, index]));
-    const selectedEntities = [...snapshot.entities].map((entity) => ({
-      entity,
-      score: scoreEntity(entity, queryTokens, request.focus, knownSymbols, ftsOrder)
-    })).filter(({ score }) => score > 0).sort((left, right) => right.score - left.score || left.entity.qualified_name.localeCompare(right.entity.qualified_name)).slice(0, impact ? 40 : 20).map(({ entity }) => entity);
-    if (selectedEntities.length === 0) {
-      selectedEntities.push(...snapshot.entities.filter((entity) => entity.kind !== "module").slice(0, 5));
-    }
+    const rankedCandidates = rankRetrievalCandidates(snapshot.entities, {
+      queryTokens,
+      focus: request.focus,
+      knownSymbols,
+      ftsOrder
+    });
+    const anchors = focusAnchors(rankedCandidates, request.focus);
+    const selectedCandidates = (anchors.length > 0 ? anchors : rankedCandidates).slice(0, impact ? 40 : 20);
+    const selectedEntities = selectedCandidates.map(({ entity }) => entity);
+    const retrievalStatus_ = retrievalStatus(snapshot.entities, selectedCandidates, request.focus);
+    const retrievalEvidence = uniqueSorted(selectedCandidates.flatMap(({ evidence }) => evidence));
     const selectedIds = new Set(selectedEntities.map((entity) => entity.stable_id));
+    const initialCandidates = new Map(selectedCandidates.map((candidate) => [candidate.entity.stable_id, candidate]));
+    const initialOrder = new Map(selectedCandidates.map((candidate, index) => [candidate.entity.stable_id, index]));
     const selectedNames = new Set(selectedEntities.map((entity) => entity.name));
     const allRelevantRelations = snapshot.relations.filter((relation) => selectedIds.has(relation.src_entity_id) || selectedIds.has(relation.dst_entity_id) || impact && selectedNames.has(relation.unresolved_target?.split(".").at(-1)));
     const relationLimit = impact ? 120 : 80;
@@ -8549,9 +8651,9 @@ async function semanticExplore(root, request, contexts = /* @__PURE__ */ new Map
       if (relation.dst_entity_id) selectedIds.add(relation.dst_entity_id);
     }
     const expandedEntities = snapshot.entities.filter((entity) => selectedIds.has(entity.stable_id)).sort((left, right) => {
-      const selectedLeft = selectedEntities.includes(left) ? 0 : 1;
-      const selectedRight = selectedEntities.includes(right) ? 0 : 1;
-      return selectedLeft - selectedRight || left.qualified_name.localeCompare(right.qualified_name);
+      const leftOrder = initialOrder.get(left.stable_id) ?? Number.MAX_SAFE_INTEGER;
+      const rightOrder = initialOrder.get(right.stable_id) ?? Number.MAX_SAFE_INTEGER;
+      return leftOrder - rightOrder || left.qualified_name.localeCompare(right.qualified_name);
     }).slice(0, impact ? 60 : 30);
     const entityById = new Map(snapshot.entities.map((entity) => [entity.stable_id, entity]));
     const unresolved = relevantRelations.filter((relation) => !relation.dst_entity_id);
@@ -8567,7 +8669,8 @@ async function semanticExplore(root, request, contexts = /* @__PURE__ */ new Map
       ...relevantRelations.flatMap((relation) => relation.risk_flags),
       ambiguousShortName ? "AMBIGUOUS_SYMBOL" : null
     ]);
-    const safetyStates = safetyFor(snapshot, risks, impact, uncertain);
+    const safetyStates = safetyFor(snapshot, risks, impact, uncertain, retrievalStatus_);
+    const noMatch = retrievalStatus_ === RETRIEVAL_STATUS.NO_MATCH;
     let response = {
       context_id: contextId,
       graph_revision: snapshot.revision,
@@ -8575,12 +8678,22 @@ async function semanticExplore(root, request, contexts = /* @__PURE__ */ new Map
       last_known_good_revision: snapshot.last_known_good_revision,
       safety_state: safetyStates[0],
       safety_states: safetyStates,
-      regions: selectedRegions(snapshot, expandedEntities),
-      entities: expandedEntities.map(entityView),
+      retrieval_status: retrievalStatus_,
+      retrieval_evidence: retrievalEvidence,
+      routing_only: noMatch,
+      regions: noMatch ? snapshot.regions.filter((region) => region.stable_id !== "region:repository").map((region) => ({
+        id: region.stable_id,
+        name: region.name,
+        kind: region.kind,
+        path: region.path,
+        confidence: region.confidence,
+        risk_flags: region.risk_flags
+      })) : selectedRegions(snapshot, expandedEntities),
+      entities: expandedEntities.map((entity) => entityView(entity, initialCandidates)),
       relations: relevantRelations.map((relation) => relationView(relation, entityById)),
       completeness: {
-        scope: impact ? "direct indexed static relations at the reported graph revision" : "indexed static semantics at the reported graph revision",
-        returned_results: "BUDGETED",
+        scope: noMatch ? "routing suggestions only; no semantic entity matched" : impact ? "direct indexed static relations at the reported graph revision" : "indexed static semantics at the reported graph revision",
+        returned_results: noMatch ? "INTENTIONALLY_PARTIAL" : "BUDGETED",
         impact: impact && safetyStates.includes(SAFETY_STATE.IMPACT_INCOMPLETE) ? "INCOMPLETE" : impact ? "DIRECT_STATIC" : "NOT_EVALUATED",
         relation_scope: impact ? "DIRECT_STATIC" : "NOT_EVALUATED",
         known_unresolved_relations: unresolved.length,
@@ -8596,8 +8709,8 @@ async function semanticExplore(root, request, contexts = /* @__PURE__ */ new Map
       unsupported_files: boundedUnsupportedPaths,
       truncated: relationCandidatesTruncated,
       delta: false,
-      notice: "Omission is not absence. Source code is authoritative before implementation changes.",
-      suggestions: []
+      notice: noMatch ? "No relevant semantic entity matched. Omission is not absence; inspect source." : "Omission is not absence. Source code is authoritative before implementation changes.",
+      suggestions: noMatch ? ["Provide focus", "Provide known_symbols", "Inspect a likely source region"] : []
     };
     if (impact) {
       response.suggestions.push("Inspect source, configuration, and tests before a destructive edit");
@@ -8718,6 +8831,7 @@ function boundedToolResult(id, explored, budget) {
       context_id: explored.context_id,
       graph_revision: explored.graph_revision,
       graph_status: explored.graph_status,
+      retrieval_status: explored.retrieval_status,
       last_known_good_revision: explored.last_known_good_revision ?? null,
       safety_states: (explored.safety_states ?? [explored.safety_state]).filter(Boolean),
       truncated: true,
@@ -8901,7 +9015,7 @@ async function runMcpServer(root) {
                   type: "integer",
                   minimum: MIN_MCP_BUDGET,
                   maximum: Number.MAX_SAFE_INTEGER,
-                  description: "Conservative token upper bound; one unit permits one serialized UTF-8 byte."
+                  description: "Serialized-response budget; one unit permits one UTF-8 byte. This is not a model-token count."
                 }
               }
             }

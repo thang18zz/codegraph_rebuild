@@ -81,7 +81,7 @@ test("init publishes one canonical graph, SQLite/FTS5, and valid bounded map wit
   const map = await readFile(paths.map, "utf8");
   assert.match(map, /OMISSION_IS_NOT_ABSENCE = True/u);
   assert.match(map, /Original source files remain authoritative/u);
-  assert.ok(result.profile.estimated_codegraph_tokens <= 1500);
+  assert.ok(result.profile.codegraph_budget_units <= 1500);
   const python = process.platform === "win32" ? "python" : "python3";
   const syntax = spawnSync(python, ["-m", "py_compile", paths.map], { encoding: "utf8" });
   assert.equal(syntax.status, 0, syntax.stderr);
@@ -205,7 +205,7 @@ def load_plugin(name):
   const broad = await semanticExplore(project.root, { task: "show entire repository", budget: 1500 });
   assert.equal(broad.broad_query, true);
   assert.equal(broad.entities.length, 0);
-  assert.ok(broad.response_tokens <= 1500);
+  assert.ok(broad.response_budget_units <= 1500);
 
   const impact = await semanticExplore(project.root, { task: "find all callers before public API rename", focus: "public_api" });
   assert.equal(impact.completeness.impact, "INCOMPLETE");
@@ -636,7 +636,7 @@ test("projection config changes regenerate the same revision under the new hard 
   assert.equal(result.changed, false);
   assert.equal(result.revision, 1);
   const state = JSON.parse(await readFile(paths.state, "utf8"));
-  assert.ok(state.codegraph_tokens <= 900);
+  assert.ok(state.codegraph_budget_units <= 900);
 });
 
 test("semantic config changes force reparsing and a new revision", async (t) => {
@@ -968,7 +968,7 @@ test("minimum MCP response remains within an explicit small budget", async (t) =
     task: "show entire repository",
     budget: 1024,
   });
-  assert.ok(response.response_tokens <= 1024);
+  assert.ok(response.response_budget_units <= 1024);
   assert.equal(response.truncated, true);
 });
 

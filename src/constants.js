@@ -58,6 +58,14 @@ export const SAFETY_STATE = Object.freeze({
   GRAPH_PARTIAL: "GRAPH_PARTIAL",
 });
 
+export const RETRIEVAL_STATUS = Object.freeze({
+  EXACT: "EXACT",
+  STRONG: "STRONG",
+  WEAK: "WEAK",
+  NO_MATCH: "NO_MATCH",
+  ROUTING: "ROUTING",
+});
+
 export const DEFAULT_CONFIG = Object.freeze({
   map_target_tokens: 1000,
   map_hard_cap_tokens: 1500,

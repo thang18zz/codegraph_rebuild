@@ -25,11 +25,11 @@ function execute(command, args, cwd, input = null) {
   });
 }
 
-test("relocated standalone executable runs init and status without PATH or project runtimes", {
+test("relocated standalone runs lifecycle and semantic MCP without project runtimes", {
   skip: process.env.CODEGRAPH_BIN ? false : "CODEGRAPH_BIN is set by npm run verify",
 }, async (t) => {
-  const project = await temporaryProject("codegraph-portable-");
-  const toolProject = await temporaryProject("codegraph-tools-");
+  const project = await temporaryProject("codegraph portable \u0111\u1ed3-");
+  const toolProject = await temporaryProject("codegraph tools \u0111\u1ed3-");
   t.after(() => project.cleanup());
   t.after(() => toolProject.cleanup());
   await project.write("src/app.py", "def main():\n    return 1\n");
@@ -62,15 +62,45 @@ test("relocated standalone executable runs init and status without PATH or proje
   const doctor = await execute(moved, ["doctor"], project.root);
   assert.equal(doctor.code, 0, doctor.stderr);
   assert.equal(JSON.parse(doctor.stdout).ok, true);
-  const mcp = await execute(moved, ["mcp"], project.root, `${JSON.stringify({
-    jsonrpc: "2.0",
-    id: 1,
-    method: "initialize",
-    params: { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "portable-test", version: "1" } },
-  })}\n`);
+  const beforeMcp = await sourceHashes(project.root);
+  const mcpMessages = [
+    {
+      jsonrpc: "2.0",
+      id: 1,
+      method: "initialize",
+      params: { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "portable-test", version: "1" } },
+    },
+    { jsonrpc: "2.0", id: 2, method: "tools/list", params: {} },
+    {
+      jsonrpc: "2.0",
+      id: 3,
+      method: "tools/call",
+      params: {
+        name: "semantic_explore",
+        arguments: { task: "inspect main", focus: "main", budget: 3000 },
+      },
+    },
+  ];
+  const mcp = await execute(
+    moved,
+    ["mcp"],
+    project.root,
+    `${mcpMessages.map((message) => JSON.stringify(message)).join("\n")}\n`,
+  );
   assert.equal(mcp.code, 0, mcp.stderr);
-  assert.equal(JSON.parse(mcp.stdout.trim()).result.protocolVersion, "2025-06-18");
+  const mcpLines = mcp.stdout.trim().split("\n");
+  const mcpResponses = mcpLines.map((line) => JSON.parse(line));
+  assert.equal(mcpResponses[0].result.protocolVersion, "2025-06-18");
+  assert.deepEqual(mcpResponses[1].result.tools.map((tool) => tool.name), ["semantic_explore"]);
+  const explored = mcpResponses[2].result.structuredContent;
+  assert.equal(explored.graph_revision, 2);
+  assert.equal(explored.retrieval_status, "EXACT");
+  assert.ok(explored.entities.some((entity) => entity.name === "main"));
+  assert.ok(Array.isArray(explored.safety_states));
+  assert.ok(Buffer.byteLength(`${mcpLines[2]}\n`, "utf8") <= 3000);
+  assert.deepEqual(await sourceHashes(project.root), beforeMcp);
   const integration = await execute(moved, ["integrate", "test-client"], project.root);
   assert.equal(integration.code, 0, integration.stderr);
   assert.equal(JSON.parse(integration.stdout).command, moved);
+  assert.deepEqual(await sourceHashes(project.root), beforeMcp);
 });

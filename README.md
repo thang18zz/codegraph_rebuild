@@ -6,7 +6,7 @@ Source code remains authoritative. Generated graph data is navigation evidence, 
 
 ## Build
 
-Development requires Node.js 25.7 or newer because the build uses an ESM entry point with `node --build-sea`. Python 3 is used only by one source-level verification check. The generated single executable does not require Node.js or a project-language runtime.
+Development requires Node.js 25.7 or newer because the build uses an ESM entry point with `node --build-sea`. Release verification pins Node.js 26.7.0 through `.node-version`. Python 3 is used only by one source-level verification check. The generated single executable does not require Node.js or a project-language runtime.
 
 ```sh
 npm install
@@ -49,7 +49,7 @@ Register the executable with stdio transport and `args: ["mcp"]`. The server exp
 semantic_explore(task, focus?, known_symbols?, context_id?, budget?)
 ```
 
-Responses include graph revision/status, source locations, confidence, risks, scoped completeness, and edit-safety states when the requested budget permits. Minimal responses retain structured safety and stale-source provenance. Source bodies are not returned by default.
+Responses include graph revision/status, retrieval status, source locations, confidence, risks, scoped completeness, and edit-safety states when the requested budget permits. `NO_MATCH` never fabricates entities and always requires source inspection; weak matches are routing hints rather than completeness evidence. Minimal responses retain structured retrieval/safety and stale-source provenance. Source bodies are not returned by default.
 
 ## Runtime Properties
 
@@ -59,10 +59,10 @@ Responses include graph revision/status, source locations, confidence, risks, sc
 - Storage: bundled SQLite with WAL and FTS5.
 - Freshness: content-hash reconciliation runs before graph-backed MCP responses; the watcher is only a latency optimization.
 - Failure behavior: invalid or unreadable changed source retains last-known-good semantics and is marked `PARTIAL`/stale.
-- Retrieval: one budget unit permits at most one serialized UTF-8 byte, a conservative upper bound for byte-based model tokenizers. MCP enforcement includes the JSON-RPC envelope and newline framing.
+- Retrieval: one budget unit permits at most one serialized UTF-8 byte. Budget units are not measured model tokens. MCP enforcement includes the JSON-RPC envelope and newline framing.
 
 ## Verification
 
-`npm test` runs source-level fixtures. `npm run verify` additionally builds, relocates, and exercises the host-platform standalone executable with no PATH or project runtimes available.
+`npm test` runs source-level fixtures and the deterministic retrieval corpus. `npm run verify` additionally builds, relocates, and exercises the host-platform standalone executable with no PATH or project runtimes available. `npm run benchmark` writes current machine-readable and human-readable results to `benchmark/results/latest.json` and `benchmark/results/latest.md`.
 
-The supplied draft test pack is declarative and currently contains no executable fixture generators or independent oracle files. Cross-platform release claims therefore require native Windows and macOS runners plus materialized test-pack fixtures; a host-only successful build does not establish those claims.
+The benchmark oracle is authored independently from CodeGraph output and covers exact/ambiguous symbols, no-match safety, FTS wording, generic queries, entry-point traps, generated noise, cross-module flow, unsupported impact, and broad routing. GitHub Actions runs the source suite, host SEA build, relocated executable verification, and benchmark on native Windows x64 and Linux x64. Agent token-saving claims require a separately configured agent benchmark with actual usage metadata; UTF-8 budget units alone are not evidence of token savings.

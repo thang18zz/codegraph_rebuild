@@ -55,7 +55,7 @@ test("100k-entity projection stays bounded and retains top-level routing domains
     map_hard_cap_tokens: 1500,
   });
   assert.equal(map.mode, "HYBRID");
-  assert.ok(map.tokens <= 1500);
+  assert.ok(map.budgetUnits <= 1500);
   for (let index = 0; index < 10; index += 1) assert.match(map.content, new RegExp(`domain_${index}`, "u"));
   assert.equal(graph.entities.length, 100_000);
 });

@@ -22,7 +22,7 @@ import {
   STATE_FILE,
   VERSION,
 } from "./constants.js";
-import { compileContextMap, estimateTokens } from "./context-map.js";
+import { compileContextMap, estimateBudgetUnits } from "./context-map.js";
 import { readConfig, writeDefaultConfig } from "./config.js";
 import { CodeGraphError } from "./errors.js";
 import { readFileNoFollow } from "./fs-safe.js";
@@ -386,7 +386,7 @@ function stateDocument(root, graph, revision, fingerprint, graphDigest, map, con
     health: graph.health,
     stale_files: graph.health.stale_files,
     parse_failures: graph.health.parse_failures,
-    codegraph_tokens: map.tokens,
+    codegraph_budget_units: map.budgetUnits,
     map_sha256: hashBytes(map.content),
     projection_config_hash: configFingerprint(config),
     generated_at: new Date().toISOString(),
@@ -930,7 +930,7 @@ async function materializationMatches(paths, snapshot, config) {
   const expectedMap = compileContextMap(snapshot, snapshot.revision, config);
   const expectedProfile = {
     ...snapshot.profile,
-    estimated_codegraph_tokens: expectedMap.tokens,
+    codegraph_budget_units: expectedMap.budgetUnits,
   };
   if (state?.version !== VERSION
       || state.graph_revision !== snapshot.revision
@@ -944,20 +944,20 @@ async function materializationMatches(paths, snapshot, config) {
       || JSON.stringify(state.health) !== JSON.stringify(snapshot.health)
       || JSON.stringify(state.stale_files) !== JSON.stringify(snapshot.health.stale_files)
       || JSON.stringify(state.parse_failures) !== JSON.stringify(snapshot.health.parse_failures)
-      || state.codegraph_tokens !== expectedMap.tokens
+      || state.codegraph_budget_units !== expectedMap.budgetUnits
       || state.map_sha256 !== hashBytes(expectedMap.content)
       || state.projection_config_hash !== configFingerprint(config)) return false;
   try {
     const inspected = await inspectArtifactFile(paths.map);
     if (!inspected) return false;
     const map = inspected.bytes.toString("utf8");
-    const tokens = estimateTokens(map);
+    const budgetUnits = estimateBudgetUnits(map);
     return inspected.digest === hashBytes(expectedMap.content)
       && map.includes(`GRAPH_REVISION = ${snapshot.revision}`)
       && map.slice(0, 1024).includes(MAP_OWNERSHIP_MARKER)
       && state.map_sha256 === inspected.digest
-      && state.codegraph_tokens === tokens
-      && tokens <= config.map_hard_cap_tokens;
+      && state.codegraph_budget_units === budgetUnits
+      && budgetUnits <= config.map_hard_cap_tokens;
   } catch (error) {
     if (error.code === "ENOENT") return false;
     throw error;
@@ -966,7 +966,7 @@ async function materializationMatches(paths, snapshot, config) {
 
 async function rematerialize(paths, snapshot, config) {
   const map = compileContextMap(snapshot, snapshot.revision, config);
-  snapshot.profile.estimated_codegraph_tokens = map.tokens;
+  snapshot.profile.codegraph_budget_units = map.budgetUnits;
   const state = stateDocument(
     dirname(paths.directory),
     snapshot,
@@ -1096,7 +1096,7 @@ async function synchronizeOnce(root, { forceFull = false, revisionFloor = 0, ski
       ? revision
       : store.latestFreshRevision();
     const map = compileContextMap(graph, revision, config);
-    graph.profile.estimated_codegraph_tokens = map.tokens;
+    graph.profile.codegraph_budget_units = map.budgetUnits;
     graph.profile.sync_latency_ms = performance.now() - started;
     backup = await backupMaterialization(paths);
     publication = store.stagePublish(graph, {

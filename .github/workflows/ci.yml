@@ -1,0 +1,48 @@
+name: Native verification
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  native:
+    name: ${{ matrix.os }} / x64
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux
+            executable: dist/codegraph
+          - os: windows-latest
+            platform: win32
+            executable: dist/codegraph.exe
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - name: Record native runtime
+        run: node -e "if (process.platform !== '${{ matrix.platform }}' || process.arch !== 'x64') process.exit(1); console.log(JSON.stringify({node:process.version,npm:process.env.npm_config_user_agent,os:process.platform,arch:process.arch,sha:process.env.GITHUB_SHA}))"
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+      - name: Assert host executable
+        run: node -e "const fs=require('node:fs'); const path='${{ matrix.executable }}'; if (!fs.existsSync(path)) throw new Error('Missing '+path)"
+      - run: npm run verify
+      - run: npm run benchmark
+      - uses: actions/upload-artifact@v7
+        with:
+          name: retrieval-benchmark-${{ matrix.platform }}-x64
+          path: |
+            benchmark/results/latest.json
+            benchmark/results/latest.md
+          if-no-files-found: error
+      - name: Record lockfile provenance
+        run: node -e "const fs=require('node:fs'),crypto=require('node:crypto'); console.log('package-lock sha256='+crypto.createHash('sha256').update(fs.readFileSync('package-lock.json')).digest('hex'))"

@@ -10,7 +10,7 @@ export function budgetByteLimit(budget) {
   return budget * BUDGET_BYTES_PER_UNIT;
 }
 
-export function estimateTokens(value) {
+export function estimateBudgetUnits(value) {
   return Math.ceil(utf8Bytes(value) / BUDGET_BYTES_PER_UNIT);
 }
 
@@ -223,9 +223,9 @@ export function compileContextMap(graph, revision, config) {
   let content = lines.join("");
   if (truncated) content = content.replace("MAP_TRUNCATED = False", "MAP_TRUNCATED = True");
   const bytes = utf8Bytes(content);
-  const tokens = estimateTokens(content);
+  const budgetUnits = estimateBudgetUnits(content);
   if (bytes > hardByteCap) {
     throw new Error(`Mandatory codegraph.py content exceeds map_hard_cap_tokens (${config.map_hard_cap_tokens})`);
   }
-  return { content, bytes, tokens, mode, truncated };
+  return { content, bytes, budgetUnits, mode, truncated };
 }

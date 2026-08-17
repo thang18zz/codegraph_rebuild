@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { validateConfig } from "../src/config.js";
 import { DEFAULT_CONFIG } from "../src/constants.js";
-import { compileContextMap } from "../src/context-map.js";
+import { compileContextMap, estimateBudgetUnits } from "../src/context-map.js";
 import { semanticExplore } from "../src/query.js";
 import { initializeProject, synchronizeProject } from "../src/sync.js";
 import { temporaryProject } from "./helpers.js";
@@ -16,6 +16,12 @@ test("budget config rejects values too small for mandatory safety metadata", () 
     }),
     /must be at least 1024/u,
   );
+});
+
+test("budget units are UTF-8 bytes rather than claimed model tokens", () => {
+  assert.equal(estimateBudgetUnits("a"), 1);
+  assert.equal(estimateBudgetUnits("é"), 2);
+  assert.equal(estimateBudgetUnits("😀"), 4);
 });
 
 test("map target projection includes fixed content and the hard cap uses raw UTF-8 bytes", () => {
@@ -181,4 +187,151 @@ test("one-character natural-language tokens do not select unrelated entities", a
     budget: 3000,
   });
   assert.deepEqual(focused.entities.map((entity) => entity.name), ["x"]);
+});
+
+test("no-match retrieval never fabricates relevance from entry-point priors", async (t) => {
+  const project = await temporaryProject();
+  t.after(() => project.cleanup());
+  await project.write("alpha.py", "def main():\n    return 1\n");
+  await project.write("billing.py", "def checkout():\n    return 2\n");
+  await initializeProject(project.root);
+
+  const response = await semanticExplore(project.root, {
+    task: "quantum compiler teleportation",
+    budget: 3000,
+  });
+  assert.equal(response.retrieval_status, "NO_MATCH");
+  assert.ok(response.response_budget_units <= 3000);
+  assert.equal(Object.hasOwn(response, "response_tokens"), false);
+  assert.deepEqual(response.entities, []);
+  assert.deepEqual(response.relations, []);
+  assert.ok(response.safety_states.includes("SOURCE_INSPECTION_REQUIRED"));
+  assert.equal(response.safety_states.includes("NAVIGATION_SAFE"), false);
+});
+
+test("exact qualified focus wins while short-name ambiguity remains unsafe", async (t) => {
+  const project = await temporaryProject();
+  t.after(() => project.cleanup());
+  await project.write("service_a.py", "class User:\n    def refresh(self):\n        return 1\n");
+  await project.write("service_b.py", "class User:\n    def refresh(self):\n        return 2\n");
+  await initializeProject(project.root);
+
+  const exact = await semanticExplore(project.root, {
+    task: "inspect refresh",
+    focus: "service_b.User.refresh",
+    budget: 3000,
+  });
+  assert.equal(exact.retrieval_status, "EXACT");
+  assert.deepEqual(exact.entities.map((entity) => entity.qualified_name), ["service_b.User.refresh"]);
+  assert.equal(exact.unresolved_areas.includes("AMBIGUOUS_SYMBOL"), false);
+
+  const ambiguous = await semanticExplore(project.root, {
+    task: "inspect refresh",
+    focus: "refresh",
+    budget: 3000,
+  });
+  assert.notEqual(ambiguous.retrieval_status, "EXACT");
+  assert.deepEqual(
+    ambiguous.entities.map((entity) => entity.qualified_name),
+    ["service_a.User.refresh", "service_b.User.refresh"],
+  );
+  assert.ok(ambiguous.unresolved_areas.includes("AMBIGUOUS_SYMBOL"));
+  assert.ok(ambiguous.safety_states.includes("SOURCE_INSPECTION_REQUIRED"));
+  assert.equal(ambiguous.safety_states.includes("NAVIGATION_SAFE"), false);
+});
+
+test("FTS and lexical evidence select candidates while priors only reorder matches", async (t) => {
+  const project = await temporaryProject();
+  t.after(() => project.cleanup());
+  await project.write("docs.py", `
+def rotate_credentials():
+    """Renew expired session credentials safely."""
+    return True
+
+def main():
+    return True
+
+def server():
+    return True
+`);
+  await initializeProject(project.root);
+
+  const documentation = await semanticExplore(project.root, {
+    task: "renew expired session credentials",
+    budget: 3000,
+  });
+  assert.ok(documentation.retrieval_evidence.includes("FTS_MATCH"));
+  assert.ok(documentation.entities.some((entity) => (
+    entity.qualified_name === "docs.rotate_credentials"
+    && entity.selection_origin === "QUERY_MATCH"
+    && entity.match_evidence.includes("FTS_MATCH")
+  )));
+  assert.equal(documentation.entities.some((entity) => entity.qualified_name === "docs.main"), false);
+  assert.equal(documentation.entities.some((entity) => entity.qualified_name === "docs.server"), false);
+
+  const ranked = await semanticExplore(project.root, {
+    task: "main credentials",
+    budget: 3000,
+  });
+  const queryMatches = ranked.entities.filter((entity) => entity.selection_origin === "QUERY_MATCH");
+  assert.equal(queryMatches[0].qualified_name, "docs.main");
+  assert.ok(queryMatches.some((entity) => entity.qualified_name === "docs.main"));
+  assert.ok(queryMatches.some((entity) => entity.qualified_name === "docs.rotate_credentials"));
+  assert.equal(queryMatches.some((entity) => entity.qualified_name === "docs.server"), false);
+});
+
+test("generic, impact, and empty no-match queries remain fail-closed", async (t) => {
+  const project = await temporaryProject();
+  t.after(() => project.cleanup());
+  await project.write("generic.py", `
+def run():
+    return 1
+
+def service():
+    return 2
+
+def handler():
+    return 3
+`);
+  await initializeProject(project.root);
+
+  const generic = await semanticExplore(project.root, { task: "run service", budget: 3000 });
+  assert.equal(generic.retrieval_status, "WEAK");
+  assert.ok(generic.safety_states.includes("SOURCE_INSPECTION_REQUIRED"));
+
+  const impact = await semanticExplore(project.root, {
+    task: "what breaks if I remove nonexistent_api?",
+    budget: 3000,
+  });
+  assert.equal(impact.retrieval_status, "NO_MATCH");
+  assert.deepEqual(impact.entities, []);
+  assert.deepEqual(impact.relations, []);
+  assert.equal(impact.completeness.impact, "INCOMPLETE");
+  assert.ok(impact.safety_states.includes("IMPACT_INCOMPLETE"));
+  assert.ok(impact.safety_states.includes("SOURCE_INSPECTION_REQUIRED"));
+
+  const empty = await semanticExplore(project.root, { task: "!!! ???", budget: 3000 });
+  assert.equal(empty.retrieval_status, "NO_MATCH");
+  assert.deepEqual(empty.entities, []);
+  assert.deepEqual(empty.relations, []);
+});
+
+test("graph expansion is distinguished from evidence-backed query matches", async (t) => {
+  const project = await temporaryProject();
+  t.after(() => project.cleanup());
+  await project.write("flow.py", "def alpha():\n    beta()\n\ndef beta():\n    return 1\n");
+  await initializeProject(project.root);
+
+  const response = await semanticExplore(project.root, {
+    task: "inspect alpha",
+    focus: "alpha",
+    budget: 3000,
+  });
+  const alpha = response.entities.find((entity) => entity.qualified_name === "flow.alpha");
+  const beta = response.entities.find((entity) => entity.qualified_name === "flow.beta");
+  assert.equal(alpha.selection_origin, "QUERY_MATCH");
+  assert.equal(beta.selection_origin, "GRAPH_EXPANSION");
+  assert.ok(response.relations.some((relation) => (
+    relation.kind === "CALLS" && relation.source === "flow.alpha" && relation.target === "flow.beta"
+  )));
 });
