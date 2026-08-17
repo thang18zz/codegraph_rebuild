@@ -1,7 +1,17 @@
 import { constants } from "node:fs";
-import { open } from "node:fs/promises";
+import { lstat, open } from "node:fs/promises";
+
+async function rejectSymbolicLink(path) {
+  const metadata = await lstat(path);
+  if (metadata.isSymbolicLink()) {
+    const error = new Error(`Refusing to follow symbolic link: ${path}`);
+    error.code = "UNSAFE_SOURCE_PATH";
+    throw error;
+  }
+}
 
 export async function readFileNoFollow(path) {
+  await rejectSymbolicLink(path);
   const noFollow = constants.O_NOFOLLOW ?? 0;
   const handle = await open(path, constants.O_RDONLY | noFollow);
   try {
@@ -18,6 +28,7 @@ export async function readFileNoFollow(path) {
 }
 
 export async function readPrefixNoFollow(path, length) {
+  await rejectSymbolicLink(path);
   const noFollow = constants.O_NOFOLLOW ?? 0;
   const handle = await open(path, constants.O_RDONLY | noFollow);
   try {

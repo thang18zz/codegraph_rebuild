@@ -208,6 +208,11 @@ function validateToolArguments(arguments_) {
 }
 
 function startWatcher(root) {
+  // Recursive fs.watch can abort inside libuv on Windows before emitting an
+  // error. Queries still run the freshness reconciliation barrier, so the
+  // watcher remains an optional latency optimization on supported hosts.
+  if (process.platform === "win32") return () => {};
+
   let timer = null;
   let syncing = false;
   let queued = false;

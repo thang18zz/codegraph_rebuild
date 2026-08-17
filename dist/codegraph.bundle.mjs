@@ -123,7 +123,7 @@ var INCOMPLETE_RISKS = /* @__PURE__ */ new Set([
 
 // src/sync.js
 import {
-  lstat as lstat2,
+  lstat as lstat3,
   mkdir,
   open as open2,
   realpath,
@@ -429,8 +429,17 @@ var CodeGraphError = class extends Error {
 
 // src/fs-safe.js
 import { constants } from "node:fs";
-import { open } from "node:fs/promises";
+import { lstat, open } from "node:fs/promises";
+async function rejectSymbolicLink(path) {
+  const metadata2 = await lstat(path);
+  if (metadata2.isSymbolicLink()) {
+    const error = new Error(`Refusing to follow symbolic link: ${path}`);
+    error.code = "UNSAFE_SOURCE_PATH";
+    throw error;
+  }
+}
 async function readFileNoFollow(path) {
+  await rejectSymbolicLink(path);
   const noFollow = constants.O_NOFOLLOW ?? 0;
   const handle2 = await open(path, constants.O_RDONLY | noFollow);
   try {
@@ -446,6 +455,7 @@ async function readFileNoFollow(path) {
   }
 }
 async function readPrefixNoFollow(path, length) {
+  await rejectSymbolicLink(path);
   const noFollow = constants.O_NOFOLLOW ?? 0;
   const handle2 = await open(path, constants.O_RDONLY | noFollow);
   try {
@@ -5639,11 +5649,11 @@ async function parseSourceFile(file, config) {
 }
 
 // src/project.js
-import { lstat, readdir, stat } from "node:fs/promises";
+import { lstat as lstat2, readdir, stat } from "node:fs/promises";
 import { basename, dirname as dirname2, extname as extname2, join as join2, relative, resolve, sep } from "node:path";
 async function exists(path) {
   try {
-    await lstat(path);
+    await lstat2(path);
     return true;
   } catch (error) {
     if (error.code === "ENOENT") return false;
@@ -5768,7 +5778,7 @@ async function scanProject(root, config) {
       const relativePath = normalizePath(relative(root, absolutePath));
       let metadata2;
       try {
-        metadata2 = await lstat(absolutePath);
+        metadata2 = await lstat2(absolutePath);
       } catch (error) {
         diagnostics.push({ code: "PATH_UNREADABLE", path: relativePath, message: error.message });
         continue;
@@ -6968,7 +6978,7 @@ async function pathExists(path) {
 async function validateArtifactPaths(root, paths, { allowMissingDirectory = false } = {}) {
   let directoryMetadata;
   try {
-    directoryMetadata = await lstat2(paths.directory);
+    directoryMetadata = await lstat3(paths.directory);
   } catch (error) {
     if (error.code === "ENOENT" && allowMissingDirectory) return;
     throw error;
@@ -6999,7 +7009,7 @@ async function validateArtifactPaths(root, paths, { allowMissingDirectory = fals
   ];
   for (const path of artifactFiles) {
     try {
-      const metadata2 = await lstat2(path);
+      const metadata2 = await lstat3(path);
       if (metadata2.isSymbolicLink() || !metadata2.isFile() || metadata2.nlink !== 1) {
         throw new CodeGraphError(
           "UNSAFE_ARTIFACT_PATH",
@@ -7095,7 +7105,7 @@ function materialDiagnosticPaths(diagnostics) {
 }
 async function inspectArtifactFile(path) {
   try {
-    const before = await lstat2(path);
+    const before = await lstat3(path);
     if (before.isSymbolicLink() || !before.isFile() || before.nlink !== 1) {
       throw new CodeGraphError(
         "UNSAFE_ARTIFACT_PATH",
@@ -7104,7 +7114,7 @@ async function inspectArtifactFile(path) {
       );
     }
     const bytes = await readFileNoFollow(path);
-    const after = await lstat2(path);
+    const after = await lstat3(path);
     if (before.dev !== after.dev || before.ino !== after.ino || after.nlink !== 1) {
       throw new CodeGraphError("UNSAFE_ARTIFACT_PATH", `Artifact changed while being inspected: ${path}`, 3);
     }
@@ -7149,7 +7159,7 @@ async function removeMatchingLock(path, expected, { requireToken = false } = {})
   if (!current) return false;
   if (current.metadata.dev !== expected.metadata.dev || current.metadata.ino !== expected.metadata.ino) return false;
   if (requireToken && current.token !== expected.token) return false;
-  const confirmed = await lstat2(path);
+  const confirmed = await lstat3(path);
   if (confirmed.dev !== expected.metadata.dev || confirmed.ino !== expected.metadata.ino) return false;
   await unlink(path);
   return true;
@@ -7212,7 +7222,7 @@ async function removeIfPresent(path) {
 async function removeKnownJournal(path) {
   const inspected = await inspectArtifactFile(path);
   if (!inspected) return;
-  const confirmed = await lstat2(path);
+  const confirmed = await lstat3(path);
   if (confirmed.dev !== inspected.metadata.dev || confirmed.ino !== inspected.metadata.ino) {
     throw new CodeGraphError("ARTIFACT_PATH_CONFLICT", `Recovery journal changed before removal: ${path}`, 3);
   }
@@ -7392,7 +7402,7 @@ async function removeRecordedArtifact(path, expectedDigest) {
       3
     );
   }
-  const confirmed = await lstat2(path);
+  const confirmed = await lstat3(path);
   if (confirmed.dev !== inspected.metadata.dev || confirmed.ino !== inspected.metadata.ino) {
     throw new CodeGraphError("ARTIFACT_PATH_CONFLICT", `Journal artifact changed before removal: ${path}`, 3);
   }
@@ -8907,6 +8917,8 @@ function validateToolArguments(arguments_2) {
   return null;
 }
 function startWatcher(root) {
+  if (process.platform === "win32") return () => {
+  };
   let timer = null;
   let syncing = false;
   let queued = false;
