@@ -7037,7 +7037,7 @@ function syncFailure(code, operation, path, error) {
   );
 }
 async function syncPreparedFile(path) {
-  const handle2 = await open2(path, "r");
+  const handle2 = await open2(path, "r+");
   let failure;
   try {
     await handle2.sync();

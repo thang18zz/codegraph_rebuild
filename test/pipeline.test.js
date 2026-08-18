@@ -63,7 +63,11 @@ async function writePublicationFixture(paths, publication) {
 
 test("init publishes one canonical graph, SQLite/FTS5, and valid bounded map without touching source", async (t) => {
   const project = await temporaryProject();
-  t.after(() => project.cleanup());
+  let store;
+  t.after(async () => {
+    store?.close();
+    await project.cleanup();
+  });
   await project.write("pkg/repository.py", "def find(token: str):\n    return token\n");
   await project.write("pkg/service.py", "from pkg.repository import find\n\ndef refresh(token: str):\n    return find(token)\n");
   const before = await sourceHashes(project.root);
@@ -78,11 +82,11 @@ test("init publishes one canonical graph, SQLite/FTS5, and valid bounded map wit
   assert.match(map, /OMISSION_IS_NOT_ABSENCE = True/u);
   assert.match(map, /Original source files remain authoritative/u);
   assert.ok(result.profile.estimated_codegraph_tokens <= 1500);
-  const syntax = spawnSync("python3", ["-m", "py_compile", paths.map], { encoding: "utf8" });
+  const python = process.platform === "win32" ? "python" : "python3";
+  const syntax = spawnSync(python, ["-m", "py_compile", paths.map], { encoding: "utf8" });
   assert.equal(syntax.status, 0, syntax.stderr);
 
-  const store = new SqliteGraphStore(paths.db, { readOnly: true });
-  t.after(() => store.close());
+  store = new SqliteGraphStore(paths.db, { readOnly: true });
   const snapshot = store.snapshot();
   assert.equal(snapshot.revision, 1);
   assert.ok(snapshot.entities.some((entity) => entity.qualified_name === "pkg.service.refresh"));
@@ -93,12 +97,15 @@ test("init publishes one canonical graph, SQLite/FTS5, and valid bounded map wit
 
 test("writable graph stores use WAL with NORMAL synchronization and foreign keys", async (t) => {
   const project = await temporaryProject();
-  t.after(() => project.cleanup());
+  let store;
+  t.after(async () => {
+    store?.close();
+    await project.cleanup();
+  });
   await project.write("app.py", "def main():\n    pass\n");
   await initializeProject(project.root);
 
-  const store = new SqliteGraphStore(artifactPaths(project.root).db);
-  t.after(() => store.close());
+  store = new SqliteGraphStore(artifactPaths(project.root).db);
   assert.equal(store.db.prepare("PRAGMA journal_mode").get().journal_mode, "wal");
   assert.equal(store.db.prepare("PRAGMA synchronous").get().synchronous, 1);
   assert.equal(store.db.prepare("PRAGMA foreign_keys").get().foreign_keys, 1);
