@@ -3,6 +3,7 @@ import {
   chmod,
   copyFile,
   link,
+  open,
   readdir,
   readFile,
   rename,
@@ -23,6 +24,7 @@ import { SqliteGraphStore } from "../src/store.js";
 import {
   artifactPaths,
   initializeProject,
+  isUnsupportedDirectorySyncError,
   projectStatus,
   rebuildProject,
   removeDerivedProject,
@@ -87,6 +89,26 @@ test("init publishes one canonical graph, SQLite/FTS5, and valid bounded map wit
   const call = snapshot.relations.find((relation) => relation.kind === "CALLS" && relation.unresolved_target === "find");
   assert.equal(call.confidence, "HIGH");
   assert.ok(store.searchEntities(["refresh"], 5).some((row) => row.name === "refresh"));
+});
+
+test("writable graph stores use WAL with NORMAL synchronization and foreign keys", async (t) => {
+  const project = await temporaryProject();
+  t.after(() => project.cleanup());
+  await project.write("app.py", "def main():\n    pass\n");
+  await initializeProject(project.root);
+
+  const store = new SqliteGraphStore(artifactPaths(project.root).db);
+  t.after(() => store.close());
+  assert.equal(store.db.prepare("PRAGMA journal_mode").get().journal_mode, "wal");
+  assert.equal(store.db.prepare("PRAGMA synchronous").get().synchronous, 1);
+  assert.equal(store.db.prepare("PRAGMA foreign_keys").get().foreign_keys, 1);
+});
+
+test("directory sync compatibility is narrow and Windows-aware", () => {
+  assert.equal(isUnsupportedDirectorySyncError({ code: "EINVAL", syscall: "fsync" }, "linux"), true);
+  assert.equal(isUnsupportedDirectorySyncError({ code: "UNKNOWN", syscall: "fsync" }, "win32"), true);
+  assert.equal(isUnsupportedDirectorySyncError({ code: "UNKNOWN", syscall: "fsync" }, "linux"), false);
+  assert.equal(isUnsupportedDirectorySyncError({ code: "EACCES", syscall: "open" }, "win32"), false);
 });
 
 test("line movement keeps stable identity and comment-only semantics", async (t) => {
@@ -435,6 +457,106 @@ test("cross-process synchronizers serialize through the project lock", async (t)
   const snapshot = store.snapshot();
   store.close();
   assert.equal(snapshot.revision, 2);
+});
+
+test("project locking does not require a persistent-disk flush", async (t) => {
+  const project = await temporaryProject();
+  t.after(() => project.cleanup());
+  await project.write("app.py", "def main():\n    pass\n");
+  await initializeProject(project.root);
+
+  const probePath = join(project.root, ".codegraph", "handle-probe");
+  const probe = await open(probePath, "w");
+  const handlePrototype = Object.getPrototypeOf(probe);
+  await probe.close();
+  await unlink(probePath);
+  const syncMock = t.mock.method(handlePrototype, "sync", async () => {
+    throw Object.assign(new Error("forced sync failure"), { code: "EIO", syscall: "fsync" });
+  });
+
+  const result = await synchronizeProject(project.root);
+  assert.equal(result.changed, false);
+  assert.equal(syncMock.mock.callCount(), 0);
+  await assert.rejects(
+    stat(join(project.root, ".codegraph", "sync.lock")),
+    (error) => error.code === "ENOENT",
+  );
+});
+
+test("prepared regular-file sync failures preserve the published revision", async (t) => {
+  const project = await temporaryProject();
+  t.after(() => project.cleanup());
+  await project.write("app.py", "def first():\n    pass\n");
+  await initializeProject(project.root);
+  const paths = artifactPaths(project.root);
+  const oldMap = await readFile(paths.map, "utf8");
+  const oldState = await readFile(paths.state, "utf8");
+  await project.write("app.py", "def second():\n    pass\n");
+  const sourceBefore = await sourceHashes(project.root);
+
+  const probePath = join(project.root, ".codegraph", "handle-probe");
+  const probe = await open(probePath, "w");
+  const handlePrototype = Object.getPrototypeOf(probe);
+  await probe.close();
+  await unlink(probePath);
+  const syncMock = t.mock.method(handlePrototype, "sync", async () => {
+    throw Object.assign(new Error("forced regular-file sync failure"), {
+      code: "EIO",
+      errno: -5,
+      syscall: "fsync",
+    });
+  });
+
+  await assert.rejects(
+    synchronizeProject(project.root),
+    (error) => error.code === "STORAGE_FILE_SYNC_FAILED"
+      && error.details?.operation === "PREPARED_FILE_SYNC"
+      && error.cause?.code === "EIO",
+  );
+  syncMock.mock.restore();
+
+  assert.equal(await readFile(paths.map, "utf8"), oldMap);
+  assert.equal(await readFile(paths.state, "utf8"), oldState);
+  assert.deepEqual(await sourceHashes(project.root), sourceBefore);
+  const status = await projectStatus(project.root);
+  assert.equal(status.graph_revision, 1);
+  assert.equal(status.graph_status, "STALE");
+});
+
+test("SQLite publication commit failures roll back and retain revision provenance", async (t) => {
+  const project = await temporaryProject();
+  t.after(() => project.cleanup());
+  await project.write("app.py", "def first():\n    pass\n");
+  await initializeProject(project.root);
+  const paths = artifactPaths(project.root);
+  const oldMap = await readFile(paths.map, "utf8");
+  const oldState = await readFile(paths.state, "utf8");
+  await project.write("app.py", "def second():\n    pass\n");
+
+  const originalExec = DatabaseSync.prototype.exec;
+  const publishing = new WeakSet();
+  const execMock = t.mock.method(DatabaseSync.prototype, "exec", function mockExec(sql) {
+    if (sql === "BEGIN IMMEDIATE") publishing.add(this);
+    if (sql === "COMMIT" && publishing.has(this)) {
+      throw Object.assign(new Error("forced SQLite commit failure"), { code: "SQLITE_IOERR_FSYNC" });
+    }
+    if (sql === "ROLLBACK") publishing.delete(this);
+    return originalExec.call(this, sql);
+  });
+
+  await assert.rejects(
+    synchronizeProject(project.root),
+    (error) => error.code === "STORAGE_SQLITE_COMMIT_FAILED"
+      && error.details?.operation === "SQLITE_COMMIT"
+      && error.cause?.code === "SQLITE_IOERR_FSYNC",
+  );
+  execMock.mock.restore();
+
+  assert.equal(await readFile(paths.map, "utf8"), oldMap);
+  assert.equal(await readFile(paths.state, "utf8"), oldState);
+  const status = await projectStatus(project.root);
+  assert.equal(status.graph_revision, 1);
+  assert.equal(status.graph_status, "STALE");
 });
 
 test("a stale lock is removed only after its recorded file identity is revalidated", async (t) => {

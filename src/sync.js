@@ -114,22 +114,59 @@ async function validateArtifactPaths(root, paths, { allowMissingDirectory = fals
   }
 }
 
-async function fsyncFile(path) {
-  const handle = await open(path, "r");
-  try {
-    await handle.sync();
-  } finally {
-    await handle.close();
-  }
+function syncFailure(code, operation, path, error) {
+  return new CodeGraphError(
+    code,
+    `${operation} failed for ${path}: ${error.message}`,
+    3,
+    {
+      operation,
+      path,
+      original: {
+        name: error.name,
+        message: error.message,
+        code: error.code,
+        errno: error.errno,
+        syscall: error.syscall,
+        path: error.path,
+        stack: error.stack,
+      },
+    },
+    error,
+  );
 }
 
-async function fsyncDirectory(path) {
+async function syncPreparedFile(path) {
+  const handle = await open(path, "r");
+  let failure;
+  try {
+    await handle.sync();
+  } catch (error) {
+    failure = syncFailure("STORAGE_FILE_SYNC_FAILED", "PREPARED_FILE_SYNC", path, error);
+  } finally {
+    try {
+      await handle.close();
+    } catch (error) {
+      if (!failure) throw error;
+    }
+  }
+  if (failure) throw failure;
+}
+
+export function isUnsupportedDirectorySyncError(error, platform) {
+  return ["EINVAL", "ENOTSUP", "EISDIR", "EPERM"].includes(error.code)
+    || (platform === "win32" && error.syscall === "fsync");
+}
+
+async function syncDirectoryBestEffort(path) {
   let handle;
   try {
     handle = await open(path, "r");
     await handle.sync();
   } catch (error) {
-    if (!["EINVAL", "ENOTSUP", "EISDIR", "EPERM"].includes(error.code)) throw error;
+    if (!isUnsupportedDirectorySyncError(error, process.platform)) {
+      throw syncFailure("STORAGE_DIRECTORY_SYNC_FAILED", "DIRECTORY_SYNC", path, error);
+    }
   } finally {
     await handle?.close();
   }
@@ -137,7 +174,7 @@ async function fsyncDirectory(path) {
 
 async function writePrepared(path, value) {
   await writeFile(path, value, { encoding: "utf8", flag: "wx" });
-  await fsyncFile(path);
+  await syncPreparedFile(path);
 }
 
 function configFingerprint(config) {
@@ -258,7 +295,6 @@ async function withProjectLock(root, operation) {
       const metadata = await handle.stat();
       ownership = { metadata, token };
       await handle.writeFile(`${JSON.stringify({ pid: process.pid, created_at: Date.now(), token })}\n`, "utf8");
-      await handle.sync();
     } catch (error) {
       if (error.code !== "EEXIST") {
         await handle?.close().catch(() => {});
@@ -438,8 +474,8 @@ async function installMaterialization(paths, prepared, backup) {
     () => assertMapReplaceable(paths.map, [backup.mapSha256, prepared.mapSha256].filter(Boolean)),
   );
   await install(prepared.stateTemp, paths.state, prepared.stateSha256);
-  await fsyncDirectory(dirname(paths.map));
-  await fsyncDirectory(dirname(paths.state));
+  await syncDirectoryBestEffort(dirname(paths.map));
+  await syncDirectoryBestEffort(dirname(paths.state));
 }
 
 async function restoreBackupFile(backupPath, destination, expectedDigest, beforeInstall = null) {
@@ -480,8 +516,8 @@ async function restoreMaterialization(paths, backup, prepared = null) {
   if (backup.hadState) {
     await restoreBackupFile(backup.stateBackup, paths.state, backup.stateSha256);
   } else await removeIfPresent(paths.state);
-  await fsyncDirectory(dirname(paths.map));
-  await fsyncDirectory(dirname(paths.state));
+  await syncDirectoryBestEffort(dirname(paths.map));
+  await syncDirectoryBestEffort(dirname(paths.state));
 }
 
 async function removeRecordedArtifact(path, expectedDigest) {
@@ -521,7 +557,7 @@ async function writePublicationJournal(paths, publication) {
   const temporary = `${paths.publication}.new-${process.pid}-${randomUUID()}`;
   await writePrepared(temporary, `${JSON.stringify(publication, null, 2)}\n`);
   await rename(temporary, paths.publication);
-  await fsyncDirectory(paths.directory);
+  await syncDirectoryBestEffort(paths.directory);
 }
 
 async function writePublicationArtifactRegistry(paths, prepared, backup) {
@@ -530,7 +566,7 @@ async function writePublicationArtifactRegistry(paths, prepared, backup) {
   const temporary = `${paths.publicationArtifacts}.new-${process.pid}-${randomUUID()}`;
   await writePrepared(temporary, content);
   await rename(temporary, paths.publicationArtifacts);
-  await fsyncDirectory(paths.directory);
+  await syncDirectoryBestEffort(paths.directory);
   return hashBytes(content);
 }
 
@@ -548,19 +584,19 @@ async function readPublicationArtifactRegistry(paths) {
 
 async function clearPublicationJournal(paths) {
   await removeIfPresent(paths.publication);
-  await fsyncDirectory(paths.directory);
+  await syncDirectoryBestEffort(paths.directory);
 }
 
 async function writeRebuildJournal(paths, rebuild) {
   const temporary = `${paths.rebuild}.new-${process.pid}-${randomUUID()}`;
   await writePrepared(temporary, `${JSON.stringify(rebuild, null, 2)}\n`);
   await rename(temporary, paths.rebuild);
-  await fsyncDirectory(paths.directory);
+  await syncDirectoryBestEffort(paths.directory);
 }
 
 async function clearRebuildJournal(paths) {
   await removeIfPresent(paths.rebuild);
-  await fsyncDirectory(paths.directory);
+  await syncDirectoryBestEffort(paths.directory);
 }
 
 function validDigest(value) {
@@ -623,7 +659,7 @@ async function recoverInterruptedRebuild(paths) {
         await removeIfPresent(member.path);
       }
     }
-    await fsyncDirectory(paths.directory);
+    await syncDirectoryBestEffort(paths.directory);
   }
   await clearRebuildJournal(paths);
   await Promise.allSettled(rebuild.members.map((member) => removeIfPresent(member.backup)));
@@ -1107,12 +1143,15 @@ async function synchronizeOnce(root, { forceFull = false, revisionFloor = 0, ski
         await clearPublicationJournal(paths);
         await removeKnownJournal(paths.publicationArtifacts);
       }
+      if (error.code === "STORAGE_SQLITE_COMMIT_FAILED") throw error;
       throw new CodeGraphError(
         "MATERIALIZATION_FAILED",
         databaseCommitted
           ? `Revision ${revision} graph data committed but projection publication is pending recovery: ${error.message}`
           : `Revision ${revision} was rolled back because generated files could not be published: ${error.message}`,
         3,
+        { operation: "PUBLICATION_INSTALL", revision },
+        error,
       );
     }
     try {
@@ -1306,7 +1345,7 @@ export async function rebuildProject(root) {
       for (let index = 0; index < members.length; index += 1) {
         if (await pathExists(members[index])) await rename(members[index], backups[index]);
       }
-      await fsyncDirectory(paths.directory);
+      await syncDirectoryBestEffort(paths.directory);
       const result = await synchronizeOnce(root, {
         forceFull: true,
         revisionFloor,

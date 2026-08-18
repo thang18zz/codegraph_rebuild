@@ -96,7 +96,7 @@ export class SqliteGraphStore {
       });
       this.readOnly = readOnly;
       if (!readOnly) {
-        this.db.exec("PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA foreign_keys=ON;");
+        this.db.exec("PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA foreign_keys=ON;");
       }
     } catch (error) {
       if (error instanceof CodeGraphError) throw error;
@@ -652,7 +652,28 @@ export class SqliteGraphStore {
         graphDigest,
         commit: () => {
           if (finished) return;
-          this.db.exec("COMMIT");
+          try {
+            this.db.exec("COMMIT");
+          } catch (error) {
+            throw new CodeGraphError(
+              "STORAGE_SQLITE_COMMIT_FAILED",
+              `SQLite publication commit failed: ${error.message}`,
+              3,
+              {
+                operation: "SQLITE_COMMIT",
+                original: {
+                  name: error.name,
+                  message: error.message,
+                  code: error.code,
+                  errno: error.errno,
+                  syscall: error.syscall,
+                  path: error.path,
+                  stack: error.stack,
+                },
+              },
+              error,
+            );
+          }
           finished = true;
         },
         rollback: () => {

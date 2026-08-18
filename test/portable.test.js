@@ -51,6 +51,14 @@ test("relocated standalone executable runs init and status without PATH or proje
   const synced = await execute(moved, ["sync"], project.root);
   assert.equal(synced.code, 0, synced.stderr);
   assert.equal(JSON.parse(synced.stdout).changed, false);
+  await project.write("src/app.py", "def main():\n    return 2\n");
+  const resynced = await execute(moved, ["sync"], project.root);
+  assert.equal(resynced.code, 0, resynced.stderr);
+  assert.equal(JSON.parse(resynced.stdout).revision, 2);
+  const reopened = await execute(moved, ["status"], project.root);
+  assert.equal(reopened.code, 0, reopened.stderr);
+  assert.equal(JSON.parse(reopened.stdout).graph_revision, 2);
+  assert.equal(JSON.parse(reopened.stdout).graph_status, "FRESH");
   const doctor = await execute(moved, ["doctor"], project.root);
   assert.equal(doctor.code, 0, doctor.stderr);
   assert.equal(JSON.parse(doctor.stdout).ok, true);
