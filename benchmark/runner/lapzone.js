@@ -323,12 +323,12 @@ export async function runLapZoneBenchmark({
   const absoluteRoot = resolve(root);
   const lapzoneCommit = git(absoluteRoot, ["rev-parse", "HEAD"]);
   const oraclePath = join(benchmarkRoot, "oracles", "lapzone", `${lapzoneCommit}.json`);
-  const oracleBytes = await readFile(oraclePath);
-  const oracleHash = createHash("sha256").update(oracleBytes).digest("hex");
+  const oracleText = (await readFile(oraclePath, "utf8")).replaceAll("\r\n", "\n");
+  const oracleHash = createHash("sha256").update(oracleText).digest("hex");
   const frozenOracleHash = (await readFile(`${oraclePath.slice(0, -5)}.sha256`, "utf8"))
     .trim().split(/\s+/u)[0];
   if (oracleHash !== frozenOracleHash) throw new Error("LapZone oracle hash differs from its frozen checksum");
-  const oracle = JSON.parse(oracleBytes.toString("utf8"));
+  const oracle = JSON.parse(oracleText);
   if (oracle.lapzone_commit_sha !== lapzoneCommit) throw new Error("LapZone oracle SHA mismatch");
   const sourceFiles = new Map(await Promise.all([...new Set(oracle.required_entities
     .map((item) => item.path).concat("Program.cs"))].map(async (path) => [

@@ -230,8 +230,9 @@ export async function runBook1Benchmark({
 } = {}) {
   if (!root) throw new Error("BOOK1_ROOT must point to the discovered VinaBookStore project");
   const absoluteRoot = resolve(root);
-  const oracle = JSON.parse(await readFile(oraclePath, "utf8"));
-  const oracleHash = createHash("sha256").update(await readFile(oraclePath)).digest("hex");
+  const oracleText = (await readFile(oraclePath, "utf8")).replaceAll("\r\n", "\n");
+  const oracle = JSON.parse(oracleText);
+  const oracleHash = createHash("sha256").update(oracleText).digest("hex");
   const frozenOracleHash = (await readFile(`${oraclePath.slice(0, -5)}.sha256`, "utf8"))
     .trim().split(/\s+/u)[0];
   if (oracleHash !== frozenOracleHash) throw new Error("Book1 oracle hash differs from its frozen checksum");
