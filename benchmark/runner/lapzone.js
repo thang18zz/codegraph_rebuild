@@ -12,6 +12,7 @@ import {
   rebuildProject,
   synchronizeProject,
 } from "../../src/sync.js";
+import { forbiddenSafetyFailures, isFalseNavigationSafe } from "./safety.js";
 
 const benchmarkRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -186,20 +187,23 @@ function scoreQuery(expected, response, durationMs) {
   for (const state of expected.required_safety ?? []) {
     check(response.safety_states.includes(state), `${expected.id}: missing safety ${state}`);
   }
+  failures.push(...forbiddenSafetyFailures(expected, response)
+    .map((failure) => `${expected.id}: ${failure}`));
   if (expected.expected_entities_empty) check(returned.length === 0, `${expected.id}: entities must be empty`);
   check(response.response_budget_units <= expected.request.budget,
     `${expected.id}: response exceeded budget`);
-  if (["NO_MATCH", "WEAK"].includes(expected.expected_status)) {
-    check(!response.safety_states.includes("NAVIGATION_SAFE"), `${expected.id}: false NAVIGATION_SAFE`);
-  }
+  const falseNavigationSafe = isFalseNavigationSafe(response);
+  check(!falseNavigationSafe, `${expected.id}: false NAVIGATION_SAFE`);
   return {
     id: expected.id,
     passed: failures.length === 0,
     failures,
     retrieval_status: response.retrieval_status,
+    safety_states: response.safety_states,
     initial_matches: initial,
     returned_entities: returned,
     response_budget_units: response.response_budget_units,
+    false_navigation_safe: falseNavigationSafe,
     duration_ms: Number(durationMs.toFixed(3)),
   };
 }
@@ -369,11 +373,7 @@ export async function runLapZoneBenchmark({
   const sourceUnchanged = JSON.stringify(before) === JSON.stringify(after);
   const codegraphRoot = resolve(benchmarkRoot, "..");
   const codegraphStatus = git(codegraphRoot, ["status", "--porcelain"]);
-  const falseSafe = queryResults.filter((item) => {
-    const expected = oracle.queries.find((query) => query.id === item.id);
-    return ["NO_MATCH", "WEAK"].includes(expected.expected_status)
-      && !item.failures.every((failure) => !failure.includes("NAVIGATION_SAFE"));
-  }).length;
+  const falseSafe = queryResults.filter((item) => item.false_navigation_safe).length;
   const failures = [
     ...sourceOracleFailures,
     ...graphResult.failures,
@@ -402,7 +402,7 @@ export async function runLapZoneBenchmark({
   const graphBytes = (await stat(artifactPaths(absoluteRoot).db)).size;
   const mapBytes = (await stat(artifactPaths(absoluteRoot).map)).size;
   const result = {
-    schema_version: 1,
+    schema_version: 2,
     benchmark: "lapzone-realworld-csharp",
     generated_at: new Date().toISOString(),
     status: failures.length === 0 ? "PASS" : "FAIL",
@@ -433,8 +433,10 @@ export async function runLapZoneBenchmark({
     },
     metrics: {
       ...graphResult.metrics,
-      entity_precision_evaluated: graphResult.metrics.required_entity_recall,
-      relation_precision_evaluated: graphResult.metrics.false_high_critical_edge_count === 0 ? 1 : 0,
+      audited_entity_precision: null,
+      audited_entity_recall: null,
+      audited_high_relation_precision: null,
+      audited_high_relation_recall: null,
       relation_count_by_confidence: confidenceCounts,
       audited_database_boundary_count: auditedDatabaseBoundaries.length,
       audited_database_boundary_pass_count: auditedDatabaseBoundaries.filter((item) => item.status === "PASS").length,
@@ -469,7 +471,7 @@ export async function runLapZoneBenchmark({
     await writeFile(join(directory, "traceability.json"), `${JSON.stringify(trace, null, 2)}\n`, "utf8");
     await writeFile(join(directory, "traceability.md"), traceabilityMarkdown(trace), "utf8");
     await writeFile(join(directory, "metrics.json"), `${JSON.stringify({
-      schema_version: 1,
+      schema_version: 2,
       metrics: result.metrics,
       performance: result.performance,
       audited_database_boundaries: result.audited_database_boundaries,

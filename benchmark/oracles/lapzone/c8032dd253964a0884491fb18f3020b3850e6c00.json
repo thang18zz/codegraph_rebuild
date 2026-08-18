@@ -121,7 +121,8 @@
       "request": { "task": "quantum GPU reservation compiler", "budget": 3000 },
       "expected_status": "NO_MATCH",
       "expected_entities_empty": true,
-      "required_safety": ["SOURCE_INSPECTION_REQUIRED"]
+      "required_safety": ["SOURCE_INSPECTION_REQUIRED"],
+      "forbidden_safety": ["NAVIGATION_SAFE"]
     }
   ]
 }

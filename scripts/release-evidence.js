@@ -44,15 +44,26 @@ const book = JSON.parse(await readFile(bookPath, "utf8"));
 const lapzone = JSON.parse(await readFile(lapPath, "utf8"));
 const codegraphSha = git("rev-parse", "HEAD");
 const status = git("status", "--porcelain");
+const bookstoreNativeCi = {
+  windows: process.env.BOOKSTORE_WINDOWS_CI_STATUS ?? "NOT_EVALUATED",
+  linux: process.env.BOOKSTORE_LINUX_CI_STATUS ?? "NOT_EVALUATED",
+};
 const provenance = {
-  schema_version: 1,
+  schema_version: 2,
   generated_at: new Date().toISOString(),
   codegraph: { repository: git("remote", "get-url", "origin"), commit_sha: codegraphSha, worktree_clean: status === "" },
   lapzone: lapzone.lapzone,
   book1: {
     name: book.project.name,
+    repository: book.project.repository,
+    commit_sha: book.project.commit_sha,
+    project_subpath: book.project.project_subpath,
+    mode: book.project.mode,
     source_fingerprint: book.project.observed_source_fingerprint,
     oracle_sha256: book.oracle.sha256,
+    git_worktree_clean_before: book.project.git_worktree_clean_before,
+    git_worktree_clean_after: book.project.git_worktree_clean_after,
+    public_native_ci: bookstoreNativeCi,
   },
   runtime: { os: platform(), arch: arch(), node: process.version },
   dependency_lock: { path: "package-lock.json", sha256: await digest(join(root, "package-lock.json")) },
@@ -70,14 +81,14 @@ const provenance = {
 };
 
 const metrics = {
-  schema_version: 1,
+  schema_version: 2,
   generated_at: provenance.generated_at,
   codegraph_commit_sha: codegraphSha,
   lapzone: { ...lapzone.metrics, performance: lapzone.performance },
   book1: book.metrics,
 };
 const cross = {
-  schema_version: 1,
+  schema_version: 2,
   codegraph_commit_sha: codegraphSha,
   interpretation: "Coverage measures observability of supported semantics; correctness and safe incompleteness are primary.",
   repositories: [
@@ -85,12 +96,17 @@ const cross = {
       name: "LapZoneAPI",
       language: "C#",
       coverage: lapzone.gates.gate_b.supported_file_coverage,
-      entity_recall: lapzone.metrics.required_entity_recall,
-      entity_precision: lapzone.metrics.entity_precision_evaluated,
-      relation_recall: lapzone.metrics.required_relation_recall,
-      relation_precision: lapzone.metrics.relation_precision_evaluated,
-      false_high: lapzone.metrics.false_high_critical_edge_count,
-      false_safe: lapzone.metrics.false_navigation_safe_count,
+      required_entity_recall: lapzone.metrics.required_entity_recall,
+      required_relation_recall: lapzone.metrics.required_relation_recall,
+      audited_entity_precision: lapzone.metrics.audited_entity_precision ?? null,
+      audited_entity_recall: lapzone.metrics.audited_entity_recall ?? null,
+      audited_high_relation_precision: lapzone.metrics.audited_high_relation_precision ?? null,
+      audited_high_relation_recall: lapzone.metrics.audited_high_relation_recall ?? null,
+      false_high_critical_edge_count: lapzone.metrics.false_high_critical_edge_count,
+      false_navigation_safe_count: lapzone.metrics.false_navigation_safe_count,
+      retrieval_precision_at_1: null,
+      retrieval_precision_at_5: null,
+      retrieval_recall_at_5: null,
       cold_index_ms: lapzone.performance.cold_index.wall_ms,
       query_latency_median_ms: lapzone.metrics.query_latency_median_ms,
       graph_db_bytes: lapzone.performance.cold_index.graph_db_bytes,
@@ -100,12 +116,17 @@ const cross = {
       name: "VinaBookStore (book1)",
       language: "Java",
       coverage: book.metrics.supported_file_coverage,
-      entity_recall: book.metrics.required_entity_recall,
-      entity_precision: book.metrics.required_entity_recall,
-      relation_recall: book.metrics.required_relation_recall,
-      relation_precision: book.metrics.false_high_critical_edge_count === 0 ? 1 : 0,
-      false_high: book.metrics.false_high_critical_edge_count,
-      false_safe: book.metrics.false_navigation_safe_count,
+      required_entity_recall: book.metrics.required_entity_recall,
+      required_relation_recall: book.metrics.required_relation_recall,
+      audited_entity_precision: book.metrics.audited_entity_precision,
+      audited_entity_recall: book.metrics.audited_entity_recall,
+      audited_high_relation_precision: book.metrics.audited_high_relation_precision,
+      audited_high_relation_recall: book.metrics.audited_high_relation_recall,
+      false_high_critical_edge_count: book.metrics.false_high_critical_edge_count,
+      false_navigation_safe_count: book.metrics.false_navigation_safe_count,
+      retrieval_precision_at_1: book.metrics.retrieval_precision_at_1,
+      retrieval_precision_at_5: book.metrics.retrieval_precision_at_5,
+      retrieval_recall_at_5: book.metrics.retrieval_recall_at_5,
       cold_index_ms: book.metrics.cold_index_ms,
       query_latency_median_ms: [...book.queries].sort((a, b) => a.duration_ms - b.duration_ms)[Math.floor(book.queries.length / 2)].duration_ms,
       graph_db_bytes: book.metrics.graph_db_bytes,
@@ -115,8 +136,21 @@ const cross = {
 };
 const traceability = JSON.parse(await readFile(join(lapDirectory, "traceability.json"), "utf8"));
 const releasePass = provenance.codegraph.worktree_clean
+  && book.project.mode === "PINNED_RELEASE_ACCEPTANCE"
+  && book.project.commit_sha === "44455ee3792bbca84d0379feff862f66a4426d3e"
+  && book.project.declared_source_fingerprint === book.project.observed_source_fingerprint
+  && book.project.git_worktree_clean_before === true
+  && book.project.git_worktree_clean_after === true
   && book.status === "PASS"
   && book.sea.passed === true
+  && book.metrics.audited_entity_precision === 1
+  && book.metrics.audited_entity_recall === 1
+  && book.metrics.audited_high_relation_precision === 1
+  && book.metrics.audited_high_relation_recall === 1
+  && book.metrics.false_high_critical_edge_count === 0
+  && book.metrics.false_navigation_safe_count === 0
+  && bookstoreNativeCi.windows === "PASS"
+  && bookstoreNativeCi.linux === "PASS"
   && lapzone.status === "PASS"
   && lapzone.sea.passed === true
   && traceability.requirements.every((item) => item.status === "PASS");
@@ -125,6 +159,11 @@ const report = `# Portable CodeGraph release report\n\nDecision: **${releasePass
   + `- Native host: ${provenance.runtime.os}/${provenance.runtime.arch}, ${provenance.runtime.node}\n`
   + `- LapZone: ${lapzone.status}, queries ${lapzone.metrics.query_pass_count}/${lapzone.metrics.query_count}, SEA ${lapzone.sea.passed ? "PASS" : "FAIL"}\n`
   + `- Book1: ${book.status}, queries ${book.metrics.query_pass_count}/${book.metrics.query_count}, SEA ${book.sea.passed ? "PASS" : "FAIL"}\n`
+  + `- Book1 pinned source: ${book.project.commit_sha}, clean ${book.project.git_worktree_clean_before && book.project.git_worktree_clean_after ? "PASS" : "FAIL"}\n`
+  + `- Book1 audited entity precision/recall: ${book.metrics.audited_entity_precision}/${book.metrics.audited_entity_recall}\n`
+  + `- Book1 audited HIGH relation precision/recall: ${book.metrics.audited_high_relation_precision}/${book.metrics.audited_high_relation_recall}\n`
+  + `- Book1 retrieval P@1/P@5/R@5: ${book.metrics.retrieval_precision_at_1}/${book.metrics.retrieval_precision_at_5}/${book.metrics.retrieval_recall_at_5}\n`
+  + `- Book1 public native CI: Windows ${bookstoreNativeCi.windows}, Linux ${bookstoreNativeCi.linux}\n`
   + `- Critical false HIGH: LapZone ${lapzone.metrics.false_high_critical_edge_count}, Book1 ${book.metrics.false_high_critical_edge_count}\n`
   + `- Safe incompleteness: LapZone ${lapzone.gates.gate_b.impact_completeness}, Book1 known boundaries disclosed\n`
   + `- Symlink probe: ${provenance.symlink_capability.status}${provenance.symlink_capability.code ? ` (${provenance.symlink_capability.code})` : ""}\n`

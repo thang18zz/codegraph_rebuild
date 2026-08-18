@@ -1,10 +1,11 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "project_identity": {
     "name": "VinaBookStore",
-    "discovered_from": "book1/book1/book/book/VinaBookStore",
-    "vcs": "none",
-    "source_fingerprint": "eb60c3e50f50a33b13d9ebe1b2889ec23127a3eb1009d5c949cb9ba482ae8d86",
+    "repository": "https://github.com/thang18zz/book_store.git",
+    "commit_sha": "44455ee3792bbca84d0379feff862f66a4426d3e",
+    "project_subpath": "book1/book/book/VinaBookStore",
+    "source_fingerprint": "0b5548df5d1da1ad91f5a148dc7e56c40458a981e8d5d53661cdefa2130256c3",
     "fingerprint_scope": "sorted relative path + NUL + bytes for pom.xml, src/main/resources/application.properties, and Java source excluding target/.codegraph",
     "java_file_count": 58,
     "production_java_file_count": 57,
@@ -22,6 +23,68 @@
     "test": ["src/test/java"],
     "resources": ["src/main/resources"]
   },
+  "entity_audit_scopes": [
+    {
+      "path": "src/main/java/vn/fs/VinaBookApplication.java",
+      "expected_entities": [
+        { "qualified_name": "vn.fs", "kind": "module" },
+        { "qualified_name": "vn.fs.VinaBookApplication", "kind": "class" },
+        { "qualified_name": "vn.fs.VinaBookApplication.main(String[])", "kind": "method" }
+      ]
+    },
+    {
+      "path": "src/main/java/vn/fs/api/ProductApi.java",
+      "expected_entities": [
+        { "qualified_name": "vn.fs.api", "kind": "module" },
+        { "qualified_name": "vn.fs.api.ProductApi", "kind": "class" },
+        { "qualified_name": "vn.fs.api.ProductApi.getAll()", "kind": "method" },
+        { "qualified_name": "vn.fs.api.ProductApi.getBestSeller()", "kind": "method" },
+        { "qualified_name": "vn.fs.api.ProductApi.getBestSellerAdmin()", "kind": "method" },
+        { "qualified_name": "vn.fs.api.ProductApi.getLasted()", "kind": "method" },
+        { "qualified_name": "vn.fs.api.ProductApi.getRated()", "kind": "method" },
+        { "qualified_name": "vn.fs.api.ProductApi.suggest(Long,Long)", "kind": "method" },
+        { "qualified_name": "vn.fs.api.ProductApi.getByCategory(Long)", "kind": "method" },
+        { "qualified_name": "vn.fs.api.ProductApi.getById(Long)", "kind": "method" },
+        { "qualified_name": "vn.fs.api.ProductApi.post(Product)", "kind": "method" },
+        { "qualified_name": "vn.fs.api.ProductApi.put(Long,Product)", "kind": "method" },
+        { "qualified_name": "vn.fs.api.ProductApi.delete(Long)", "kind": "method" }
+      ]
+    },
+    {
+      "path": "src/main/java/vn/fs/repository/UserRepository.java",
+      "expected_entities": [
+        { "qualified_name": "vn.fs.repository", "kind": "module" },
+        { "qualified_name": "vn.fs.repository.UserRepository", "kind": "interface" },
+        { "qualified_name": "vn.fs.repository.UserRepository.findByStatusTrue()", "kind": "method" },
+        { "qualified_name": "vn.fs.repository.UserRepository.existsByEmail(String)", "kind": "method" },
+        { "qualified_name": "vn.fs.repository.UserRepository.findByEmail(String)", "kind": "method" },
+        { "qualified_name": "vn.fs.repository.UserRepository.findByToken(String)", "kind": "method" }
+      ]
+    },
+    {
+      "path": "src/main/java/vn/fs/service/SendMailService.java",
+      "expected_entities": [
+        { "qualified_name": "vn.fs.service", "kind": "module" },
+        { "qualified_name": "vn.fs.service.SendMailService", "kind": "interface" },
+        { "qualified_name": "vn.fs.service.SendMailService.run()", "kind": "method" },
+        { "qualified_name": "vn.fs.service.SendMailService.queue(String,String,String)", "kind": "method" },
+        { "qualified_name": "vn.fs.service.SendMailService.queue(MailInfo)", "kind": "method" },
+        { "qualified_name": "vn.fs.service.SendMailService.send(MailInfo)", "kind": "method" }
+      ]
+    },
+    {
+      "path": "src/main/java/vn/fs/config/WebSecurityConfig.java",
+      "expected_entities": [
+        { "qualified_name": "vn.fs.config", "kind": "module" },
+        { "qualified_name": "vn.fs.config.WebSecurityConfig", "kind": "class" },
+        { "qualified_name": "vn.fs.config.WebSecurityConfig.authenticationJwTokenFilter()", "kind": "method" },
+        { "qualified_name": "vn.fs.config.WebSecurityConfig.configure(AuthenticationManagerBuilder)", "kind": "method" },
+        { "qualified_name": "vn.fs.config.WebSecurityConfig.authenticationManagerBean()", "kind": "method" },
+        { "qualified_name": "vn.fs.config.WebSecurityConfig.passwordEncoder()", "kind": "method" },
+        { "qualified_name": "vn.fs.config.WebSecurityConfig.configure(HttpSecurity)", "kind": "method" }
+      ]
+    }
+  ],
   "required_entities": [
     { "qualified_name": "vn.fs.VinaBookApplication", "kind": "class", "path": "src/main/java/vn/fs/VinaBookApplication.java", "line": 7 },
     { "qualified_name": "vn.fs.VinaBookApplication.main(String[])", "kind": "method", "path": "src/main/java/vn/fs/VinaBookApplication.java", "line": 9 },
@@ -67,11 +130,79 @@
     { "source": "vn.fs.api.OrderApi.success(Long)", "kind": "CALLS", "target": "vn.fs.api.OrderApi.updateProduct(Order)", "expected_confidence": "HIGH", "path": "src/main/java/vn/fs/api/OrderApi.java", "line": 144 },
     { "source": "vn.fs.api.CartDetailApi.post(CartDetail)", "kind": "CALLS", "target": "vn.fs.repository.ProductRepository.findByProductIdAndStatusTrue(Long)", "expected_confidence": "HIGH", "path": "src/main/java/vn/fs/api/CartDetailApi.java", "line": 67 },
     { "source": "vn.fs.api.CartDetailApi.post(CartDetail)", "kind": "CALLS", "target": "vn.fs.repository.CartDetailRepository.findByCart(Cart)", "expected_confidence": "HIGH", "path": "src/main/java/vn/fs/api/CartDetailApi.java", "line": 79 },
-    { "source": "vn.fs.api.UserApi.registerUser(SignupRequest)", "kind": "CREATES", "target": "vn.fs.entity.User", "expected_confidence": "LOW", "path": "src/main/java/vn/fs/api/UserApi.java", "line": 196 },
-    { "source": "vn.fs.api.UserApi.registerUser(SignupRequest)", "kind": "CREATES", "target": "vn.fs.entity.AppRole", "expected_confidence": "LOW", "path": "src/main/java/vn/fs/api/UserApi.java", "line": 203 },
-    { "source": "vn.fs.api.UserApi.registerUser(SignupRequest)", "kind": "CREATES", "target": "vn.fs.entity.Cart", "expected_confidence": "LOW", "path": "src/main/java/vn/fs/api/UserApi.java", "line": 207 },
+    { "source": "vn.fs.api.UserApi.registerUser(SignupRequest)", "kind": "CREATES", "target": "vn.fs.entity.User", "expected_confidence": "LOW", "path": "src/main/java/vn/fs/api/UserApi.java", "line": 195 },
+    { "source": "vn.fs.api.UserApi.registerUser(SignupRequest)", "kind": "CREATES", "target": "vn.fs.entity.AppRole", "expected_confidence": "LOW", "path": "src/main/java/vn/fs/api/UserApi.java", "line": 201 },
+    { "source": "vn.fs.api.UserApi.registerUser(SignupRequest)", "kind": "CREATES", "target": "vn.fs.entity.Cart", "expected_confidence": "LOW", "path": "src/main/java/vn/fs/api/UserApi.java", "line": 205 },
     { "source": "vn.fs.api.OrderApi.checkout(String,Cart)", "kind": "CREATES", "target": "vn.fs.entity.Order", "expected_confidence": "LOW", "path": "src/main/java/vn/fs/api/OrderApi.java", "line": 97 },
     { "source": "vn.fs.api.OrderApi.checkout(String,Cart)", "kind": "CREATES", "target": "vn.fs.entity.OrderDetail", "expected_confidence": "LOW", "path": "src/main/java/vn/fs/api/OrderApi.java", "line": 100 }
+  ],
+  "relation_audit_scopes": [
+    {
+      "source": "vn.fs.service.implement.SendMailServiceImplement",
+      "kind": "IMPLEMENTS",
+      "required_targets": ["vn.fs.service.SendMailService"],
+      "allowed_additional_targets": []
+    },
+    {
+      "source": "vn.fs.service.implement.SendMailServiceImplement.queue(String,String,String)",
+      "kind": "CALLS",
+      "required_targets": ["vn.fs.service.implement.SendMailServiceImplement.queue(MailInfo)"],
+      "allowed_additional_targets": []
+    },
+    {
+      "source": "vn.fs.api.UserApi.sendToken(String)",
+      "kind": "CALLS",
+      "required_targets": [
+        "vn.fs.repository.UserRepository.findByEmail(String)",
+        "vn.fs.api.UserApi.sendMaiToken(String,String,String)"
+      ],
+      "allowed_additional_targets": ["vn.fs.repository.UserRepository.existsByEmail(String)"]
+    },
+    {
+      "source": "vn.fs.api.UserApi.sendMaiToken(String,String,String)",
+      "kind": "CALLS",
+      "required_targets": ["vn.fs.service.SendMailService.queue(String,String,String)"],
+      "allowed_additional_targets": []
+    },
+    {
+      "source": "vn.fs.api.ProductApi.getRated()",
+      "kind": "CALLS",
+      "required_targets": ["vn.fs.repository.ProductRepository.findProductRated()"],
+      "allowed_additional_targets": []
+    },
+    {
+      "source": "vn.fs.api.ProductApi.suggest(Long,Long)",
+      "kind": "CALLS",
+      "required_targets": ["vn.fs.repository.ProductRepository.findProductSuggest(Long,Long,Long,Long)"],
+      "allowed_additional_targets": []
+    },
+    {
+      "source": "vn.fs.api.OrderApi.checkout(String,Cart)",
+      "kind": "CALLS",
+      "required_targets": [
+        "vn.fs.repository.CartDetailRepository.findByCart(Cart)",
+        "vn.fs.repository.UserRepository.findByEmail(String)"
+      ],
+      "allowed_additional_targets": [
+        "vn.fs.repository.UserRepository.existsByEmail(String)",
+        "vn.fs.utils.SendMailUtil.sendMailOrder(Order)"
+      ]
+    },
+    {
+      "source": "vn.fs.api.OrderApi.success(Long)",
+      "kind": "CALLS",
+      "required_targets": ["vn.fs.api.OrderApi.updateProduct(Order)"],
+      "allowed_additional_targets": ["vn.fs.utils.SendMailUtil.sendMailOrderSuccess(Order)"]
+    },
+    {
+      "source": "vn.fs.api.CartDetailApi.post(CartDetail)",
+      "kind": "CALLS",
+      "required_targets": [
+        "vn.fs.repository.ProductRepository.findByProductIdAndStatusTrue(Long)",
+        "vn.fs.repository.CartDetailRepository.findByCart(Cart)"
+      ],
+      "allowed_additional_targets": ["vn.fs.repository.ProductRepository.findByStatusTrue()"]
+    }
   ],
   "query_cases": [
     { "id": "book1_exact_user_api", "request": { "task": "inspect UserApi authentication", "focus": "vn.fs.api.UserApi", "budget": 3500 }, "expected_status": "EXACT", "required_initial": ["vn.fs.api.UserApi"], "acceptable": ["vn.fs.repository.UserRepository", "vn.fs.config.JwtUtils"] },
@@ -82,7 +213,7 @@
     { "id": "book1_flow_checkout", "request": { "task": "checkout cart items create order and update inventory", "budget": 3500 }, "expected_status_any": ["STRONG", "EXACT"], "required_any": ["vn.fs.api.OrderApi.checkout(String,Cart)", "vn.fs.api.OrderApi"], "acceptable": ["vn.fs.repository.CartDetailRepository", "vn.fs.repository.OrderRepository", "vn.fs.repository.ProductRepository"] },
     { "id": "book1_flow_auth", "request": { "task": "authenticate JWT token and load user details", "budget": 3500 }, "expected_status_any": ["STRONG", "EXACT"], "required_any": ["vn.fs.config.AuthTokenFilter", "vn.fs.api.UserApi.authenticateUser(LoginRequest)"], "acceptable": ["vn.fs.config.JwtUtils", "vn.fs.service.implement.UserDetailsServiceImpl"] },
     { "id": "book1_flow_products", "request": { "task": "rated product catalogue and related suggestions", "budget": 3500 }, "expected_status_any": ["STRONG", "EXACT"], "required_any": ["vn.fs.api.ProductApi", "vn.fs.repository.ProductRepository"], "acceptable": ["vn.fs.api.ProductApi.getRated()", "vn.fs.repository.ProductRepository.findProductRated()"] },
-    { "id": "book1_no_match", "request": { "task": "quantum GPU reservation compiler", "budget": 3000 }, "expected_status": "NO_MATCH", "expected_entities_empty": true, "required_safety": ["SOURCE_INSPECTION_REQUIRED"] },
+    { "id": "book1_no_match", "request": { "task": "quantum GPU reservation compiler", "budget": 3000 }, "expected_status": "NO_MATCH", "expected_entities_empty": true, "expected_relations_empty": true, "required_safety": ["SOURCE_INSPECTION_REQUIRED"], "forbidden_safety": ["NAVIGATION_SAFE"] },
     { "id": "book1_impact_mail", "request": { "task": "What breaks if SendMailService queue signature changes?", "focus": "vn.fs.service.SendMailService.queue(String,String,String)", "budget": 3500 }, "expected_status": "EXACT", "required_initial": ["vn.fs.service.SendMailService.queue(String,String,String)"], "required_safety": ["IMPACT_INCOMPLETE", "SOURCE_INSPECTION_REQUIRED"] }
   ],
   "ambiguity_cases": [

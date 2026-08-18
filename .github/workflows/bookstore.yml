@@ -1,0 +1,110 @@
+name: Pinned BookStore Java acceptance
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/bookstore.yml"
+      - "benchmark/runner/**"
+      - "release-evidence/book1/oracle.json"
+      - "release-evidence/book1/oracle.sha256"
+      - "scripts/release-evidence.js"
+      - "src/parser.js"
+      - "src/resolver.js"
+      - "src/query.js"
+      - "src/sync.js"
+      - "test/benchmark-validation.test.js"
+      - "package.json"
+      - "package-lock.json"
+      - ".node-version"
+  pull_request:
+    paths:
+      - ".github/workflows/bookstore.yml"
+      - "benchmark/runner/**"
+      - "release-evidence/book1/oracle.json"
+      - "release-evidence/book1/oracle.sha256"
+      - "scripts/release-evidence.js"
+      - "src/parser.js"
+      - "src/resolver.js"
+      - "src/query.js"
+      - "src/sync.js"
+      - "test/benchmark-validation.test.js"
+      - "package.json"
+      - "package-lock.json"
+      - ".node-version"
+
+permissions:
+  contents: read
+
+env:
+  BOOK1_COMMIT_SHA: 44455ee3792bbca84d0379feff862f66a4426d3e
+
+jobs:
+  bookstore:
+    name: ${{ matrix.os }} / x64
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux
+            artifact_platform: linux
+            executable: dist/codegraph
+          - os: windows-latest
+            platform: win32
+            artifact_platform: windows
+            executable: dist/codegraph.exe
+    steps:
+      - uses: actions/checkout@v7
+      - name: Assert exact CodeGraph SHA
+        run: node -e "const {execFileSync}=require('node:child_process'); const actual=execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim(); if(actual!==process.env.GITHUB_SHA) throw new Error(actual+' != '+process.env.GITHUB_SHA)"
+      - uses: actions/checkout@v7
+        with:
+          repository: thang18zz/book_store
+          ref: ${{ env.BOOK1_COMMIT_SHA }}
+          path: external/book_store
+          persist-credentials: false
+      - name: Assert pinned clean BookStore checkout
+        run: >-
+          node -e "const {execFileSync}=require('node:child_process'); const cwd=process.env.BOOK1_REPO_ROOT; const git=(args)=>execFileSync('git',args,{cwd,encoding:'utf8'}).trim(); const actual=git(['rev-parse','HEAD']); if(actual!==process.env.BOOK1_EXPECTED_SHA) throw new Error(actual+' != '+process.env.BOOK1_EXPECTED_SHA); const status=git(['status','--porcelain']); if(status) throw new Error('BookStore checkout is dirty: '+status)"
+        env:
+          BOOK1_REPO_ROOT: ${{ github.workspace }}/external/book_store
+          BOOK1_EXPECTED_SHA: ${{ env.BOOK1_COMMIT_SHA }}
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - name: Record native runtime
+        run: node -e "if (process.platform !== '${{ matrix.platform }}' || process.arch !== 'x64') process.exit(1); console.log(JSON.stringify({node:process.version,os:process.platform,arch:process.arch,sha:process.env.GITHUB_SHA}))"
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+      - run: npm run verify
+      - run: npm run benchmark
+      - name: Run pinned public source and SEA acceptance
+        run: npm run benchmark:book1
+        env:
+          BOOK1_REPO_ROOT: ${{ github.workspace }}/external/book_store
+          BOOK1_ROOT: ${{ github.workspace }}/external/book_store/book1/book/book/VinaBookStore
+          BOOK1_EXPECTED_SHA: ${{ env.BOOK1_COMMIT_SHA }}
+          BOOK1_ACCEPTANCE_MODE: PINNED_RELEASE_ACCEPTANCE
+          CODEGRAPH_BIN: ${{ github.workspace }}/${{ matrix.executable }}
+      - name: Assert BookStore checkout remains clean
+        if: always()
+        run: >-
+          node -e "const {execFileSync}=require('node:child_process'); const status=execFileSync('git',['status','--porcelain'],{cwd:process.env.BOOK1_REPO_ROOT,encoding:'utf8'}).trim(); if(status) throw new Error('BookStore checkout changed: '+status)"
+        env:
+          BOOK1_REPO_ROOT: ${{ github.workspace }}/external/book_store
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: bookstore-java-${{ matrix.artifact_platform }}-${{ github.sha }}
+          path: |
+            release-evidence/book1/results.json
+            release-evidence/book1/results.md
+            release-evidence/book1/oracle.json
+            release-evidence/book1/oracle.md
+            release-evidence/book1/oracle.sha256
+            release-evidence/metrics.json
+          if-no-files-found: warn
