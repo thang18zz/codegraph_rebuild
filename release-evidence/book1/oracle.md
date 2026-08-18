@@ -5,7 +5,7 @@ This oracle was authored by inspecting the pinned public `VinaBookStore` source 
 - Repository: `https://github.com/thang18zz/book_store.git`
 - Commit: `44455ee3792bbca84d0379feff862f66a4426d3e`
 - Project: `book1/book/book/VinaBookStore`
-- Source fingerprint: `0b5548df5d1da1ad91f5a148dc7e56c40458a981e8d5d53661cdefa2130256c3`
+- Source fingerprint: `0ca51385d5a83f3a5dd5bc732776936c595569b7755bb3ffc155be218e264b83` over canonical Git checkout bytes (`core.autocrlf=false`)
 - Scope: 58 Java files (57 production, one test), `pom.xml`, and `src/main/resources/application.properties`; `target/` and generated CodeGraph state are excluded.
 - Profile: Maven, Java 17, Spring Boot/MVC/Data/JPA.
 - Production architecture: controllers/API classes directly use Spring Data repositories; authentication uses JWT/security services; checkout converts cart details to orders and updates inventory; mail uses an overloaded queued service.

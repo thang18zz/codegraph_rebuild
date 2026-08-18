@@ -5,8 +5,8 @@
     "repository": "https://github.com/thang18zz/book_store.git",
     "commit_sha": "44455ee3792bbca84d0379feff862f66a4426d3e",
     "project_subpath": "book1/book/book/VinaBookStore",
-    "source_fingerprint": "0b5548df5d1da1ad91f5a148dc7e56c40458a981e8d5d53661cdefa2130256c3",
-    "fingerprint_scope": "sorted relative path + NUL + bytes for pom.xml, src/main/resources/application.properties, and Java source excluding target/.codegraph",
+    "source_fingerprint": "0ca51385d5a83f3a5dd5bc732776936c595569b7755bb3ffc155be218e264b83",
+    "fingerprint_scope": "sorted relative path + NUL + canonical Git checkout bytes (core.autocrlf=false) for pom.xml, src/main/resources/application.properties, and Java source excluding target/.codegraph",
     "java_file_count": 58,
     "production_java_file_count": 57,
     "test_java_file_count": 1

@@ -59,12 +59,11 @@ jobs:
       - uses: actions/checkout@v7
       - name: Assert exact CodeGraph SHA
         run: node -e "const {execFileSync}=require('node:child_process'); const actual=execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim(); if(actual!==process.env.GITHUB_SHA) throw new Error(actual+' != '+process.env.GITHUB_SHA)"
-      - uses: actions/checkout@v7
-        with:
-          repository: thang18zz/book_store
-          ref: ${{ env.BOOK1_COMMIT_SHA }}
-          path: external/book_store
-          persist-credentials: false
+      - name: Checkout pinned BookStore with canonical bytes
+        run: |
+          git -c core.autocrlf=false clone --no-checkout https://github.com/thang18zz/book_store.git external/book_store
+          git -C external/book_store config core.autocrlf false
+          git -C external/book_store -c core.autocrlf=false checkout --detach ${{ env.BOOK1_COMMIT_SHA }}
       - name: Assert pinned clean BookStore checkout
         run: >-
           node -e "const {execFileSync}=require('node:child_process'); const cwd=process.env.BOOK1_REPO_ROOT; const git=(args)=>execFileSync('git',args,{cwd,encoding:'utf8'}).trim(); const actual=git(['rev-parse','HEAD']); if(actual!==process.env.BOOK1_EXPECTED_SHA) throw new Error(actual+' != '+process.env.BOOK1_EXPECTED_SHA); const status=git(['status','--porcelain']); if(status) throw new Error('BookStore checkout is dirty: '+status)"
