@@ -222,7 +222,9 @@ test("exact qualified focus wins while short-name ambiguity remains unsafe", asy
     budget: 3000,
   });
   assert.equal(exact.retrieval_status, "EXACT");
-  assert.deepEqual(exact.entities.map((entity) => entity.qualified_name), ["service_b.User.refresh"]);
+  assert.equal(exact.entities[0].qualified_name, "service_b.User.refresh");
+  assert.ok(exact.entities.some((entity) => entity.qualified_name === "service_b.User"
+    && entity.selection_origin === "GRAPH_EXPANSION"));
   assert.equal(exact.unresolved_areas.includes("AMBIGUOUS_SYMBOL"), false);
 
   const ambiguous = await semanticExplore(project.root, {
@@ -232,8 +234,14 @@ test("exact qualified focus wins while short-name ambiguity remains unsafe", asy
   });
   assert.notEqual(ambiguous.retrieval_status, "EXACT");
   assert.deepEqual(
-    ambiguous.entities.map((entity) => entity.qualified_name),
+    ambiguous.entities.filter((entity) => entity.selection_origin === "QUERY_MATCH")
+      .map((entity) => entity.qualified_name),
     ["service_a.User.refresh", "service_b.User.refresh"],
+  );
+  assert.deepEqual(
+    ambiguous.entities.filter((entity) => entity.selection_origin === "GRAPH_EXPANSION")
+      .map((entity) => entity.qualified_name),
+    ["service_a.User", "service_b.User"],
   );
   assert.ok(ambiguous.unresolved_areas.includes("AMBIGUOUS_SYMBOL"));
   assert.ok(ambiguous.safety_states.includes("SOURCE_INSPECTION_REQUIRED"));
@@ -334,4 +342,53 @@ test("graph expansion is distinguished from evidence-backed query matches", asyn
   assert.ok(response.relations.some((relation) => (
     relation.kind === "CALLS" && relation.source === "flow.alpha" && relation.target === "flow.beta"
   )));
+});
+
+test("one incidental real-domain term cannot validate a multi-concept no-match query", async (t) => {
+  const project = await temporaryProject();
+  t.after(() => project.cleanup());
+  await project.write("GpuCatalog.cs", "namespace Demo; public class GpuCatalog {}\n");
+  await initializeProject(project.root);
+  const response = await semanticExplore(project.root, {
+    task: "quantum GPU reservation compiler",
+    budget: 3000,
+  });
+  assert.equal(response.retrieval_status, "NO_MATCH");
+  assert.deepEqual(response.entities, []);
+  assert.deepEqual(response.relations, []);
+  assert.ok(response.safety_states.includes("SOURCE_INSPECTION_REQUIRED"));
+});
+
+test("natural-language variants match CamelCase concepts and retain the lexical owner", async (t) => {
+  const project = await temporaryProject();
+  t.after(() => project.cleanup());
+  await project.write("security.py", `
+class AuthTokenFilter:
+    def validate(self):
+        return True
+
+class UserApi:
+    def authenticateUser(self):
+        return True
+
+class ProductApi:
+    def getRated(self):
+        return []
+`);
+  await initializeProject(project.root);
+
+  const auth = await semanticExplore(project.root, {
+    task: "authenticate token and load user details",
+    budget: 3000,
+  });
+  assert.ok(auth.entities.some((entity) => entity.qualified_name === "security.AuthTokenFilter"));
+  assert.ok(auth.entities.some((entity) => entity.qualified_name === "security.UserApi.authenticateUser"));
+
+  const products = await semanticExplore(project.root, {
+    task: "rated product catalogue and related suggestions",
+    budget: 3000,
+  });
+  assert.ok(products.entities.some((entity) => entity.qualified_name === "security.ProductApi.getRated"));
+  assert.ok(products.entities.some((entity) => entity.qualified_name === "security.ProductApi"
+    && entity.selection_origin === "GRAPH_EXPANSION"));
 });

@@ -14,7 +14,7 @@ import {
 } from "./ir.js";
 
 function stripLanguageExtension(value) {
-  return value.replace(/\.(?:py|jsx?|mjs|cjs|tsx?|mts|cts|java|go)$/iu, "");
+  return value.replace(/\.(?:py|jsx?|mjs|cjs|tsx?|mts|cts|java|go|cs)$/iu, "");
 }
 
 function normalizeRelativeImport(rawTarget, sourcePath) {
@@ -46,8 +46,128 @@ function cleanedTarget(rawTarget, sourcePath) {
 }
 
 function entityNameCandidates(target, byName) {
-  const name = target.split(".").at(-1);
+  const name = target.split(".").at(-1).replace(/\([^()]*\)$/u, "");
   return byName.get(name) ?? [];
+}
+
+function csharpNamespaceTargets(file) {
+  const bindings = file.imports?.["@namespace"] ?? [];
+  return (Array.isArray(bindings) ? bindings : [bindings])
+    .map((binding) => binding?.target)
+    .filter(Boolean);
+}
+
+function csharpCandidateType(candidate, entities) {
+  if (["class", "record", "struct", "interface"].includes(candidate.kind)) return candidate;
+  if (candidate.kind !== "method") return null;
+  const methodParent = candidate.qualified_name.slice(0, candidate.qualified_name.lastIndexOf("."));
+  return entities.find((entity) => ["class", "record", "struct", "interface"].includes(entity.kind)
+    && entity.file_path === candidate.file_path
+    && entity.qualified_name === methodParent) ?? null;
+}
+
+function csharpTypeEvidence(candidate, source, file, entities) {
+  const type = csharpCandidateType(candidate, entities);
+  if (!type) return false;
+  const namespace = type.qualified_name.slice(0, type.qualified_name.lastIndexOf("."));
+  const sourceModule = entities.find((entity) => entity.file_path === source.file_path
+    && entity.kind === "module");
+  return namespace === sourceModule?.qualified_name
+    || csharpNamespaceTargets(file).includes(namespace)
+    || candidate.file_path === source.file_path;
+}
+
+function csharpMemberCandidates(target, candidates, source, file, entities) {
+  const match = target.match(/^(.+)\.([^.()]+)\((.*)\)$/u);
+  if (!match) return [];
+  const [, rawReceiver, method, rawArguments] = match;
+  const receiver = rawReceiver.split(".").at(-1).replace(/\?$/u, "");
+  const argumentTypes = rawArguments === "" ? [] : rawArguments.split(",").map((value) => value.trim());
+  return candidates.filter((candidate) => {
+    if (candidate.kind !== "method" || candidate.name !== method) return false;
+    const type = csharpCandidateType(candidate, entities);
+    if (!type || type.name !== receiver || candidate.inputs.length !== argumentTypes.length) return false;
+    if (!csharpTypeEvidence(candidate, source, file, entities)) return false;
+    return argumentTypes.every((argumentType, index) => (
+      argumentType === "?"
+      || argumentType.replace(/\?$/u, "") === candidate.inputs[index]?.type?.replace(/\?$/u, "")
+    ));
+  });
+}
+
+function csharpLocalMethodCandidates(target, candidates, source) {
+  const match = target.match(/^([^.()]+)\((.*)\)$/u);
+  if (!match || source.kind !== "method") return [];
+  const [, method, rawArguments] = match;
+  const argumentCount = rawArguments === "" ? 0 : rawArguments.split(",").length;
+  const owner = source.qualified_name.slice(0, source.qualified_name.lastIndexOf("."));
+  return candidates.filter((candidate) => candidate.kind === "method"
+    && candidate.name === method
+    && candidate.file_path === source.file_path
+    && candidate.inputs.length === argumentCount
+    && candidate.qualified_name.startsWith(`${owner}.`));
+}
+
+function javaCandidateType(candidate, entities) {
+  if (["class", "record", "enum", "interface"].includes(candidate.kind)) return candidate;
+  if (candidate.kind !== "method") return null;
+  const methodParent = candidate.qualified_name.slice(0, candidate.qualified_name.lastIndexOf("."));
+  return entities.find((entity) => ["class", "record", "enum", "interface"].includes(entity.kind)
+    && entity.file_path === candidate.file_path
+    && entity.qualified_name === methodParent) ?? null;
+}
+
+function javaTypeEvidence(candidate, source, file, entities) {
+  const type = javaCandidateType(candidate, entities);
+  if (!type) return false;
+  if (candidate.file_path === source.file_path) return true;
+  const sourceModule = entities.find((entity) => entity.file_path === source.file_path
+    && entity.kind === "module");
+  const packageName = type.qualified_name.slice(0, type.qualified_name.lastIndexOf("."));
+  if (packageName === sourceModule?.qualified_name) return true;
+  const bindings = file.imports?.[type.name] ?? [];
+  return (Array.isArray(bindings) ? bindings : [bindings])
+    .some((binding) => binding?.target === type.qualified_name);
+}
+
+function typeArgumentsMatch(rawArguments, candidate) {
+  const argumentTypes = rawArguments === ""
+    ? []
+    : rawArguments.split(",").map((value) => {
+      const type = value.trim();
+      return type === "?" ? type : type.replace(/\?$/u, "");
+    });
+  if (candidate.inputs.length !== argumentTypes.length) return false;
+  return argumentTypes.every((argumentType, index) => (
+    argumentType === "?"
+    || argumentType === candidate.inputs[index]?.type?.replace(/\?$/u, "")
+  ));
+}
+
+function javaMemberCandidates(target, candidates, source, file, entities) {
+  const match = target.match(/^(.+)\.([^.()]+)\((.*)\)$/u);
+  if (!match) return [];
+  const [, rawReceiver, method, rawArguments] = match;
+  const receiver = rawReceiver.split(".").at(-1).replace(/<.*>$/u, "");
+  return candidates.filter((candidate) => {
+    if (candidate.kind !== "method" || candidate.name !== method) return false;
+    const type = javaCandidateType(candidate, entities);
+    return type?.name === receiver
+      && typeArgumentsMatch(rawArguments, candidate)
+      && javaTypeEvidence(candidate, source, file, entities);
+  });
+}
+
+function javaLocalMethodCandidates(target, candidates, source) {
+  const match = target.match(/^([^.()]+)\((.*)\)$/u);
+  if (!match || source.kind !== "method") return [];
+  const [, method, rawArguments] = match;
+  const owner = source.qualified_name.slice(0, source.qualified_name.lastIndexOf("."));
+  return candidates.filter((candidate) => candidate.kind === "method"
+    && candidate.name === method
+    && candidate.file_path === source.file_path
+    && candidate.qualified_name.startsWith(`${owner}.`)
+    && typeArgumentsMatch(rawArguments, candidate));
 }
 
 function scopedImportBindings(rawBindings, source, byId) {
@@ -94,8 +214,12 @@ function candidatesForRelation(relation, candidates) {
   if (relation.kind === "CALLS" || relation.kind === "ROUTES_TO") {
     return candidates.filter((candidate) => ["function", "method", "class"].includes(candidate.kind));
   }
-  if (relation.kind === "CREATES") return candidates.filter((candidate) => candidate.kind === "class");
-  if (relation.kind === "INHERITS") return candidates.filter((candidate) => ["class", "interface"].includes(candidate.kind));
+  if (relation.kind === "CREATES") {
+    return candidates.filter((candidate) => ["class", "record", "struct"].includes(candidate.kind));
+  }
+  if (relation.kind === "INHERITS") {
+    return candidates.filter((candidate) => ["class", "record", "interface"].includes(candidate.kind));
+  }
   if (relation.kind === "IMPLEMENTS") return candidates.filter((candidate) => candidate.kind === "interface");
   return candidates;
 }
@@ -266,10 +390,73 @@ function resolveOne(relation, source, file, entities, byName, byId) {
   const rawTarget = relation.unresolved_target;
   if (!rawTarget) return relation;
   const target = cleanedTarget(rawTarget, file.path);
-  const candidates = candidatesForRelation(relation, entityNameCandidates(target, byName));
+  const rawNameCandidates = entityNameCandidates(target, byName);
+  if (file.language === "csharp" && relation.kind === "INHERITS") {
+    const interfaces = rawNameCandidates.filter((candidate) => candidate.kind === "interface"
+      && csharpTypeEvidence(candidate, source, file, entities));
+    const classes = rawNameCandidates.filter((candidate) => ["class", "record"].includes(candidate.kind)
+      && csharpTypeEvidence(candidate, source, file, entities));
+    if (interfaces.length === 1 && classes.length === 0) relation.kind = "IMPLEMENTS";
+  }
+  let candidates = candidatesForRelation(relation, rawNameCandidates);
   const dynamicallyShadowed = relation.risk_flags.includes(RISK.DYNAMIC_DISPATCH)
     || source.inputs.some((input) => input.name === target.split(".")[0]);
   const highConfidenceBlocked = () => relation.risk_flags.some((risk) => INCOMPLETE_RISKS.has(risk));
+
+  if (file.language === "csharp" && relation.kind === "CALLS") {
+    const members = csharpMemberCandidates(target, candidates, source, file, entities);
+    if (members.length === 1 && !highConfidenceBlocked()) {
+      relation.dst_entity_id = members[0].stable_id;
+      relation.confidence = CONFIDENCE.HIGH;
+      relation.candidates = [];
+      return relation;
+    }
+    if (members.length > 0) candidates = members;
+    const localMethods = csharpLocalMethodCandidates(target, candidates, source);
+    if (localMethods.length === 1 && !highConfidenceBlocked()) {
+      relation.dst_entity_id = localMethods[0].stable_id;
+      relation.confidence = CONFIDENCE.HIGH;
+      relation.candidates = [];
+      return relation;
+    }
+    if (localMethods.length > 0) candidates = localMethods;
+  }
+
+  if (file.language === "java" && relation.kind === "CALLS") {
+    const members = javaMemberCandidates(target, candidates, source, file, entities);
+    if (members.length === 1 && !highConfidenceBlocked()) {
+      relation.dst_entity_id = members[0].stable_id;
+      relation.confidence = CONFIDENCE.HIGH;
+      relation.candidates = [];
+      return relation;
+    }
+    if (members.length > 0) candidates = members;
+    const localMethods = javaLocalMethodCandidates(target, candidates, source);
+    if (localMethods.length === 1 && !highConfidenceBlocked()) {
+      relation.dst_entity_id = localMethods[0].stable_id;
+      relation.confidence = CONFIDENCE.HIGH;
+      relation.candidates = [];
+      return relation;
+    }
+    if (localMethods.length > 0) candidates = localMethods;
+  }
+
+  if (file.language === "csharp"
+      && ["DEPENDS_ON", "INHERITS", "IMPLEMENTS"].includes(relation.kind)) {
+    const structural = candidates.filter((candidate) => csharpTypeEvidence(
+      candidate,
+      source,
+      file,
+      entities,
+    ));
+    if (structural.length === 1 && !highConfidenceBlocked()) {
+      relation.dst_entity_id = structural[0].stable_id;
+      relation.confidence = CONFIDENCE.HIGH;
+      relation.candidates = [];
+      return relation;
+    }
+    if (structural.length > 0) candidates = structural;
+  }
 
   const module = entities.find((entity) => entity.file_path === source.file_path && entity.kind === "module");
   const local = candidates.filter((candidate) => {

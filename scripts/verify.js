@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 for (const [command, arguments_] of [
   [process.execPath, [join(root, "scripts", "build.js")]],
-  [process.execPath, ["--test"]],
+  [process.execPath, ["--test", "test/**/*.test.js"]],
 ]) {
   const result = spawnSync(command, arguments_, {
     cwd: root,

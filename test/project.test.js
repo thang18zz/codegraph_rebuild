@@ -3,10 +3,11 @@ import { mkdir, symlink } from "node:fs/promises";
 import { join } from "node:path";
 import test from "node:test";
 import { DEFAULT_CONFIG } from "../src/constants.js";
-import { scanProject } from "../src/project.js";
-import { temporaryProject } from "./helpers.js";
+import { detectLanguage, scanProject } from "../src/project.js";
+import { requireSymlinkCapability, temporaryProject } from "./helpers.js";
 
 test("scanner skips symlink loops and nested repositories", async (t) => {
+  if (!(await requireSymlinkCapability(t, "dir"))) return;
   const project = await temporaryProject();
   t.after(() => project.cleanup());
   await project.write("src/app.py", "def main():\n    pass\n");
@@ -33,7 +34,14 @@ test("generated and test source classifications are explicit", async (t) => {
   assert.equal(classes["tests/test_app.py"], "TEST");
 });
 
+test("C# source extension is supported without treating project files as source", () => {
+  assert.equal(detectLanguage("Controllers/AuthController.cs"), "csharp");
+  assert.equal(detectLanguage("LapZoneApi.csproj"), null);
+  assert.equal(detectLanguage("LapZoneApi.sln"), null);
+});
+
 test("a symlinked .gitignore fails closed instead of hiding source through an external file", async (t) => {
+  if (!(await requireSymlinkCapability(t))) return;
   const project = await temporaryProject();
   const external = await temporaryProject("codegraph-ignore-");
   t.after(() => project.cleanup());

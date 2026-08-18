@@ -146,6 +146,31 @@
       "expected_impact": "INCOMPLETE",
       "required_safety_states": ["IMPACT_INCOMPLETE", "SOURCE_INSPECTION_REQUIRED"],
       "forbidden_safety_states": ["NAVIGATION_SAFE"]
+    },
+    {
+      "id": "csharp_exact_flow",
+      "fixture": "csharp_flow",
+      "request": { "task": "trace AuthController login", "focus": "AuthController", "budget": 3000 },
+      "required_entities": ["Demo.Controllers.AuthController", "Demo.Services.IAuthService"],
+      "acceptable_entities": [],
+      "forbidden_entities": [],
+      "expected_retrieval_status": "EXACT",
+      "required_relations": [
+        { "kind": "DEPENDS_ON", "source": "Demo.Controllers.AuthController", "target": "Demo.Services.IAuthService" }
+      ]
+    },
+    {
+      "id": "csharp_incidental_term_no_match",
+      "fixture": "csharp_gpu",
+      "request": { "task": "quantum GPU reservation compiler", "budget": 3000 },
+      "required_entities": [],
+      "acceptable_entities": [],
+      "forbidden_entities": ["Demo.GpuCatalog"],
+      "expected_retrieval_status": "NO_MATCH",
+      "expected_entities_empty": true,
+      "expected_relations_empty": true,
+      "required_safety_states": ["SOURCE_INSPECTION_REQUIRED"],
+      "forbidden_safety_states": ["NAVIGATION_SAFE"]
     }
   ]
 }

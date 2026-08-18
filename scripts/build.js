@@ -1,5 +1,13 @@
-import { chmod, copyFile, mkdir, writeFile } from "node:fs/promises";
+import {
+  chmod,
+  copyFile,
+  mkdir,
+  mkdtemp,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { spawnSync } from "node:child_process";
+import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
@@ -9,7 +17,8 @@ const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const dist = join(projectRoot, "dist");
 const bundle = join(dist, "codegraph.bundle.mjs");
 const executable = join(dist, process.platform === "win32" ? "codegraph.exe" : "codegraph");
-const configPath = join(dist, "sea-config.json");
+const configDirectory = await mkdtemp(join(tmpdir(), "codegraph-sea-"));
+const configPath = join(configDirectory, "sea-config.json");
 
 await mkdir(dist, { recursive: true });
 await build({
@@ -44,6 +53,7 @@ const result = spawnSync(process.execPath, ["--build-sea", configPath], {
   cwd: projectRoot,
   encoding: "utf8",
 });
+await rm(configDirectory, { recursive: true, force: true });
 if (result.status !== 0) {
   process.stderr.write(result.stderr || result.stdout || "SEA build failed\n");
   process.exit(result.status ?? 1);

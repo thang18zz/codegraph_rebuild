@@ -62,6 +62,14 @@ const ASSET_PATHS = Object.freeze({
     "wasm",
     "tree-sitter-go.wasm",
   ),
+  "tree-sitter-c-sharp.wasm": join(
+    rootDirectory,
+    "node_modules",
+    "@vscode",
+    "tree-sitter-wasm",
+    "wasm",
+    "tree-sitter-c-sharp.wasm",
+  ),
 });
 
 export async function loadAsset(name) {

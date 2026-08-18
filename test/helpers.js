@@ -1,7 +1,52 @@
 import { createHash } from "node:crypto";
-import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { lstat, mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+
+const symlinkCapabilities = new Map();
+
+export function symlinkCapability(type = "file") {
+  if (symlinkCapabilities.has(type)) return symlinkCapabilities.get(type);
+  const probe = (async () => {
+    const root = await mkdtemp(join(tmpdir(), "codegraph-symlink-capability-"));
+    const target = join(root, type === "dir" ? "target-directory" : "target-file");
+    const link = join(root, "probe-link");
+    try {
+      if (type === "dir") await mkdir(target);
+      else await writeFile(target, "probe", "utf8");
+      try {
+        await symlink(target, link, type === "dir" ? "dir" : "file");
+      } catch (error) {
+        if (["EACCES", "EPERM"].includes(error.code)) {
+          return { status: "UNAVAILABLE_PRIVILEGE", error_code: error.code };
+        }
+        if (["ENOSYS", "ENOTSUP", "EOPNOTSUPP"].includes(error.code)) {
+          return { status: "UNAVAILABLE_FILESYSTEM", error_code: error.code };
+        }
+        return { status: "UNEXPECTED_ERROR", error_code: error.code ?? "UNKNOWN", message: error.message };
+      }
+      const metadata = await lstat(link);
+      if (!metadata.isSymbolicLink()) {
+        return { status: "UNEXPECTED_ERROR", error_code: "NOT_A_SYMLINK" };
+      }
+      return { status: "SUPPORTED", error_code: null };
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  })();
+  symlinkCapabilities.set(type, probe);
+  return probe;
+}
+
+export async function requireSymlinkCapability(t, type = "file") {
+  const capability = await symlinkCapability(type);
+  if (capability.status === "SUPPORTED") return true;
+  if (["UNAVAILABLE_PRIVILEGE", "UNAVAILABLE_FILESYSTEM"].includes(capability.status)) {
+    t.skip(`SKIP_CAPABILITY: ${capability.status} (${capability.error_code})`);
+    return false;
+  }
+  throw new Error(`Symlink capability probe failed unexpectedly: ${JSON.stringify(capability)}`);
+}
 
 export async function temporaryProject(prefix = "codegraph-test-") {
   const root = await mkdtemp(join(tmpdir(), prefix));

@@ -8,7 +8,7 @@ import { isSea as isSea2 } from "node:sea";
 // src/constants.js
 var VERSION = "0.1.0";
 var SCHEMA_VERSION = 3;
-var PARSER_VERSION = "tree-sitter-wasm-vscode-0.3.1";
+var PARSER_VERSION = "tree-sitter-wasm-vscode-0.3.1-csharp-1";
 var CODEGRAPH_DIR = ".codegraph";
 var DB_FILE = "graph.db";
 var STATE_FILE = "state.json";
@@ -88,7 +88,8 @@ var LANGUAGE_BY_EXTENSION = Object.freeze({
   ".cts": "typescript",
   ".tsx": "tsx",
   ".java": "java",
-  ".go": "go"
+  ".go": "go",
+  ".cs": "csharp"
 });
 var DEFAULT_IGNORED_DIRECTORIES = /* @__PURE__ */ new Set([
   CODEGRAPH_DIR,
@@ -618,7 +619,8 @@ function semanticImports(imports) {
       scope_entity_id: binding.scope_entity_id ?? null,
       condition: binding.condition?.expression ?? null,
       type_only: Boolean(binding.type_only),
-      wildcard: Boolean(binding.wildcard)
+      wildcard: Boolean(binding.wildcard),
+      namespace: Boolean(binding.namespace)
     }))];
   }));
 }
@@ -4703,6 +4705,14 @@ var ASSET_PATHS = Object.freeze({
     "tree-sitter-wasm",
     "wasm",
     "tree-sitter-go.wasm"
+  ),
+  "tree-sitter-c-sharp.wasm": join(
+    rootDirectory,
+    "node_modules",
+    "@vscode",
+    "tree-sitter-wasm",
+    "wasm",
+    "tree-sitter-c-sharp.wasm"
   )
 });
 async function loadAsset(name2) {
@@ -4722,7 +4732,8 @@ var LANGUAGE_ASSET = Object.freeze({
   typescript: "tree-sitter-typescript.wasm",
   tsx: "tree-sitter-tsx.wasm",
   java: "tree-sitter-java.wasm",
-  go: "tree-sitter-go.wasm"
+  go: "tree-sitter-go.wasm",
+  csharp: "tree-sitter-c-sharp.wasm"
 });
 var initialization;
 var languages = /* @__PURE__ */ new Map();
@@ -4774,7 +4785,8 @@ function parameterType(node) {
   return type ? normalizeSemanticText(type.text.replace(/^:\s*/u, "")) : null;
 }
 function parameterDefault(node) {
-  const value = node.childForFieldName("value") ?? node.childForFieldName("default");
+  const defaultNode = node.childForFieldName("default") ?? node.namedChildren.find((child) => child.type === "equals_value_clause");
+  const value = node.childForFieldName("value") ?? defaultNode?.childForFieldName("value") ?? defaultNode?.namedChildren.at(-1) ?? defaultNode;
   return value ? normalizeSemanticText(value.text) : null;
 }
 function parseInputs(parameters) {
@@ -4792,7 +4804,8 @@ function parseInputs(parameters) {
     "spread_parameter",
     "receiver_parameter",
     "parameter_declaration",
-    "variadic_parameter_declaration"
+    "variadic_parameter_declaration",
+    "parameter"
   ]);
   const inputs = [];
   for (const child of parameters.namedChildren) {
@@ -4819,7 +4832,7 @@ function parseInputs(parameters) {
   return inputs;
 }
 function parseOutputs(declaration) {
-  const output2 = declaration.childForFieldName("return_type") ?? declaration.childForFieldName("result") ?? (declaration.type === "method_declaration" ? declaration.childForFieldName("type") : null);
+  const output2 = declaration.childForFieldName("return_type") ?? declaration.childForFieldName("result") ?? declaration.childForFieldName("returns") ?? (declaration.type === "method_declaration" ? declaration.childForFieldName("type") : null);
   if (!output2) return [];
   return [{ type: normalizeSemanticText(output2.text.replace(/^:\s*/u, "")), condition: null }];
 }
@@ -4838,6 +4851,7 @@ function declarationInfo(language, node, scope, namespace) {
   let body2 = node.childForFieldName("body");
   let kind;
   let name2;
+  let identityName;
   let identitySuffix = "";
   let effectiveScope = scope;
   if (language === "python") {
@@ -4881,8 +4895,8 @@ function declarationInfo(language, node, scope, namespace) {
   } else if (language === "java") {
     const kindByType = {
       class_declaration: "class",
-      record_declaration: "class",
-      enum_declaration: "class",
+      record_declaration: "record",
+      enum_declaration: "enum",
       interface_declaration: "interface",
       method_declaration: "method",
       constructor_declaration: "method"
@@ -4910,9 +4924,32 @@ function declarationInfo(language, node, scope, namespace) {
     } else {
       return null;
     }
+  } else if (language === "csharp") {
+    const kindByType = {
+      class_declaration: "class",
+      record_declaration: "record",
+      struct_declaration: "struct",
+      enum_declaration: "enum",
+      interface_declaration: "interface",
+      method_declaration: "method",
+      constructor_declaration: "method"
+    };
+    kind = kindByType[node.type];
+    name2 = nameNode?.text;
+    if (!kind) return null;
+    if (kind === "method") {
+      identitySuffix = `(${parameterTypes(parameters)})`;
+      if (node.type === "constructor_declaration") {
+        identityName = name2;
+        name2 = ".ctor";
+      }
+    }
   }
   if (!name2) return null;
-  const scopedName = [...effectiveScope.map((part) => part.name), `${name2}${identitySuffix}`].filter(Boolean).join(".");
+  const scopedName = [
+    ...effectiveScope.map((part) => part.name),
+    `${identityName ?? name2}${identitySuffix}`
+  ].filter(Boolean).join(".");
   return {
     kind,
     name: name2,
@@ -4934,7 +4971,64 @@ function namespaceFor(language, root, path) {
     const packageName = packageClause?.namedChildren.at(-1)?.text;
     if (packageName) return packageName;
   }
+  if (language === "csharp") {
+    const declaration = root.namedChildren.find((child) => ["file_scoped_namespace_declaration", "namespace_declaration"].includes(child.type));
+    const namespaceName = declaration?.childForFieldName("name")?.text;
+    if (namespaceName) return namespaceName;
+  }
   return moduleNameForPath(path);
+}
+function csharpAttributes(node) {
+  if (!node) return [];
+  return node.namedChildren.filter((child) => child.type === "attribute_list").flatMap((list) => descendants(list, "attribute")).map((attribute) => {
+    const rawName = attribute.childForFieldName("name")?.text ?? attribute.namedChildren[0]?.text ?? "";
+    const name2 = rawName.split(".").at(-1).replace(/Attribute$/u, "");
+    const argumentsNode = attribute.namedChildren.find((child) => child.type === "attribute_argument_list");
+    const staticString = firstDescendant(argumentsNode, /* @__PURE__ */ new Set(["string_literal"]));
+    return {
+      name: name2,
+      arguments: argumentsNode ? normalizeSemanticText(argumentsNode.text.slice(1, -1)) : null,
+      staticString: staticString ? stripQuotes(staticString.text) : null
+    };
+  }).filter((attribute) => attribute.name);
+}
+function normalizedHttpRoute(classTemplate, methodTemplate, controllerName) {
+  const replaceController = (value) => value.replace(
+    /\[controller\]/giu,
+    controllerName?.replace(/Controller$/u, "") ?? "[controller]"
+  );
+  if (methodTemplate?.startsWith("/")) return replaceController(methodTemplate);
+  const parts2 = [classTemplate, methodTemplate].filter((value) => value !== null && value !== void 0 && value !== "").map((value) => replaceController(value).replace(/^\/+|\/+$/gu, ""));
+  return `/${parts2.join("/")}`.replace(/\/{2,}/gu, "/");
+}
+function csharpSemanticMetadata(node, declaration, parent = {}) {
+  const attributes = csharpAttributes(node);
+  const tags = attributes.map((attribute) => `attribute:${attribute.name}${attribute.arguments === null ? "" : `(${attribute.arguments})`}`);
+  const route = attributes.find((attribute) => attribute.name === "Route")?.staticString ?? parent.routeTemplate ?? null;
+  const controllerName = ["class", "record", "struct", "interface"].includes(declaration.kind) ? declaration.name : parent.controllerName;
+  const explicitAnonymous = attributes.some((attribute) => attribute.name === "AllowAnonymous");
+  const explicitRequired = attributes.some((attribute) => attribute.name === "Authorize");
+  const auth = explicitAnonymous ? "anonymous" : explicitRequired ? "required" : parent.auth ?? null;
+  if (route) tags.push(`route:template:${route}`);
+  if (auth) tags.push(`auth:${auth}`);
+  const verbs = /* @__PURE__ */ new Map([
+    ["HttpGet", "GET"],
+    ["HttpPost", "POST"],
+    ["HttpPut", "PUT"],
+    ["HttpPatch", "PATCH"],
+    ["HttpDelete", "DELETE"]
+  ]);
+  for (const attribute of attributes) {
+    const verb = verbs.get(attribute.name);
+    if (!verb) continue;
+    tags.push("entry_point:http", `http:${verb.toLowerCase()}`);
+    tags.push(`route:http:${verb} ${normalizedHttpRoute(
+      parent.routeTemplate,
+      attribute.staticString,
+      controllerName
+    )}`);
+  }
+  return { tags: uniqueSorted(tags), routeTemplate: route, controllerName, auth };
 }
 function tagsForDeclaration(language, info2, decorators, node) {
   const tags = [];
@@ -4950,7 +5044,7 @@ function tagsForDeclaration(language, info2, decorators, node) {
 function dynamicRisks(target, node) {
   const risks = [];
   const lower = `${target} ${node.text}`.toLowerCase();
-  if (/\b(getattr|setattr|hasattr|eval|class\.forname|getmethod|reflect)\b/u.test(lower)) risks.push(RISK.REFLECTION);
+  if (/\b(getattr|setattr|hasattr|eval|class\.forname|getmethod|getproperty|bindingflags|custompropertytypemap|settypemap|reflect|typeof)\b/u.test(lower)) risks.push(RISK.REFLECTION);
   if (/\b(__import__|import_module|dynamic import|import\s*\()/u.test(lower)) risks.push(RISK.DYNAMIC_DISPATCH);
   if (/\b(container|inject|provider|dependency|service_locator)\b/u.test(lower)) risks.push(RISK.DEPENDENCY_INJECTION);
   if (/\b(register|registry|plugin|entry_point)\b/u.test(lower)) risks.push(RISK.RUNTIME_REGISTRATION);
@@ -4967,16 +5061,22 @@ function callTarget(language, node) {
     const name2 = node.childForFieldName("name")?.text;
     return [object, name2].filter(Boolean).join(".") || null;
   }
+  if (language === "csharp" && node.type === "invocation_expression") {
+    return node.childForFieldName("function")?.text ?? null;
+  }
   return null;
 }
 function isCallNode(language, node) {
-  return language === "python" && node.type === "call" || ["javascript", "typescript", "tsx", "go"].includes(language) && node.type === "call_expression" || language === "java" && node.type === "method_invocation";
+  return language === "python" && node.type === "call" || ["javascript", "typescript", "tsx", "go"].includes(language) && node.type === "call_expression" || language === "java" && node.type === "method_invocation" || language === "csharp" && node.type === "invocation_expression";
 }
 function constructorTarget(language, node) {
   if (["javascript", "typescript", "tsx"].includes(language) && node.type === "new_expression") {
     return node.childForFieldName("constructor")?.text ?? node.namedChildren.find((child) => child.type !== "arguments")?.text ?? null;
   }
   if (language === "java" && node.type === "object_creation_expression") {
+    return node.childForFieldName("type")?.text ?? null;
+  }
+  if (language === "csharp" && node.type === "object_creation_expression") {
     return node.childForFieldName("type")?.text ?? null;
   }
   return null;
@@ -4988,6 +5088,7 @@ function isAnonymousCallable(language, node) {
   }
   if (language === "java") return node.type === "lambda_expression";
   if (language === "go") return node.type === "func_literal";
+  if (language === "csharp") return ["lambda_expression", "anonymous_method_expression"].includes(node.type);
   return false;
 }
 function conditionParts(node) {
@@ -5001,7 +5102,7 @@ function conditionParts(node) {
   return null;
 }
 function shortCircuitParts(language, node) {
-  const supported = language === "python" && node.type === "boolean_operator" || ["javascript", "typescript", "tsx"].includes(language) && node.type === "binary_expression";
+  const supported = language === "python" && node.type === "boolean_operator" || ["javascript", "typescript", "tsx", "csharp"].includes(language) && node.type === "binary_expression";
   if (!supported) return null;
   const left = node.childForFieldName("left");
   const right = node.childForFieldName("right");
@@ -5028,9 +5129,27 @@ function isNestedDeclaration(language, node) {
     ].includes(node.type);
   }
   if (language === "java") {
-    return ["class_declaration", "interface_declaration", "method_declaration", "constructor_declaration"].includes(node.type);
+    return [
+      "class_declaration",
+      "record_declaration",
+      "enum_declaration",
+      "interface_declaration",
+      "method_declaration",
+      "constructor_declaration"
+    ].includes(node.type);
   }
   if (language === "go") return ["function_declaration", "method_declaration", "type_spec"].includes(node.type);
+  if (language === "csharp") {
+    return [
+      "class_declaration",
+      "record_declaration",
+      "struct_declaration",
+      "enum_declaration",
+      "interface_declaration",
+      "method_declaration",
+      "constructor_declaration"
+    ].includes(node.type);
+  }
   return false;
 }
 function collectBindingIdentifiers(node, output2) {
@@ -5153,11 +5272,23 @@ function importInfo(language, node, namespace, path) {
     const target = stripQuotes(node.childForFieldName("path")?.text ?? "");
     const alias = node.childForFieldName("name")?.text ?? target.split("/").at(-1);
     if (target) imports.push({ alias, target, typeOnly: false });
+  } else if (language === "csharp" && node.type === "using_directive") {
+    const aliasNode = node.childForFieldName("name");
+    const targetNode = node.namedChildren.findLast((child) => ["identifier", "qualified_name", "generic_name", "alias_qualified_name"].includes(child.type));
+    const target = targetNode?.text ?? "";
+    if (target) {
+      imports.push({
+        alias: aliasNode?.text ?? "@namespace",
+        target,
+        typeOnly: false,
+        namespace: !aliasNode
+      });
+    }
   }
   return imports;
 }
 function importNode(language, node) {
-  return language === "python" && ["import_statement", "import_from_statement"].includes(node.type) || ["javascript", "typescript", "tsx"].includes(language) && node.type === "import_statement" || language === "java" && node.type === "import_declaration" || language === "go" && node.type === "import_spec";
+  return language === "python" && ["import_statement", "import_from_statement"].includes(node.type) || ["javascript", "typescript", "tsx"].includes(language) && node.type === "import_statement" || language === "java" && node.type === "import_declaration" || language === "go" && node.type === "import_spec" || language === "csharp" && node.type === "using_directive";
 }
 function directTypeName(node) {
   if (!node) return null;
@@ -5197,8 +5328,115 @@ function inheritanceTargets(language, node) {
         });
       }
     }
+  } else if (language === "csharp" && [
+    "class_declaration",
+    "record_declaration",
+    "struct_declaration",
+    "interface_declaration"
+  ].includes(node.type)) {
+    const baseList = node.namedChildren.find((child) => child.type === "base_list");
+    for (const item of baseList?.namedChildren ?? []) {
+      const target = directTypeName(item) ?? item.text;
+      if (target) targets.push({ target, kind: "INHERITS" });
+    }
   }
   return [...new Map(targets.map((item) => [`${item.kind}:${item.target}`, item])).values()];
+}
+function csharpArgumentType(argument, bindings) {
+  const expression = argument.childForFieldName("expression") ?? argument.namedChildren.at(-1) ?? argument;
+  if (expression.type === "identifier") return bindings.get(expression.text) ?? "?";
+  if (["string_literal", "verbatim_string_literal"].includes(expression.type)) return "string";
+  if (expression.type === "integer_literal") return "int";
+  if (expression.type === "boolean_literal") return "bool";
+  if (expression.type === "null_literal") return "?";
+  const created = expression.type === "object_creation_expression" ? expression.childForFieldName("type")?.text : null;
+  return created ?? "?";
+}
+function javaArgumentType(expression, bindings) {
+  if (!expression) return "?";
+  if (expression.type === "identifier") return bindings.get(expression.text) ?? "?";
+  if (expression.type === "string_literal") return "String";
+  if (expression.type === "character_literal") return "char";
+  if (/integer_literal$/u.test(expression.type)) return /[lL]$/u.test(expression.text) ? "long" : "int";
+  if (/floating_point_literal$/u.test(expression.type)) return /[fF]$/u.test(expression.text) ? "float" : "double";
+  if (["true", "false", "boolean_literal"].includes(expression.type)) return "boolean";
+  if (expression.type === "null_literal") return "?";
+  if (expression.type === "object_creation_expression") {
+    return expression.childForFieldName("type")?.text ?? "?";
+  }
+  return "?";
+}
+function javaInvocationInfo(node, bindings = /* @__PURE__ */ new Map()) {
+  const name2 = node.childForFieldName("name")?.text;
+  if (!name2) return null;
+  const receiver = node.childForFieldName("object")?.text ?? null;
+  const receiverName = receiver?.replace(/^this\./u, "");
+  const boundReceiver = receiver ? bindings.get(receiver) ?? bindings.get(receiverName) ?? receiver : null;
+  const argumentsNode = node.childForFieldName("arguments") ?? node.namedChildren.find((child) => child.type === "argument_list");
+  const argumentTypes = (argumentsNode?.namedChildren ?? []).map((argument) => javaArgumentType(argument, bindings));
+  return {
+    target: `${boundReceiver ? `${normalizeSemanticText(boundReceiver)}.` : ""}${name2}(${argumentTypes.join(",")})`
+  };
+}
+function javaVariableBindings(node) {
+  if (!["field_declaration", "local_variable_declaration"].includes(node.type)) return [];
+  const type = node.childForFieldName("type")?.text;
+  if (!type) return [];
+  return descendants(node, "variable_declarator").map((declarator) => declarator.childForFieldName("name")?.text).filter(Boolean).map((name2) => [name2, normalizeSemanticText(type)]);
+}
+function csharpInvocationInfo(node, bindings = /* @__PURE__ */ new Map()) {
+  const callable = node.childForFieldName("function");
+  if (!callable) return null;
+  const member = callable.type === "member_access_expression" ? callable : null;
+  const receiver = member?.childForFieldName("expression")?.text ?? null;
+  const nameNode = member?.childForFieldName("name") ?? callable;
+  const methodName = nameNode.type === "generic_name" ? nameNode.namedChildren.find((child) => child.type === "identifier")?.text : nameNode.text;
+  if (!methodName) return null;
+  const argumentsNode = node.childForFieldName("arguments") ?? node.namedChildren.find((child) => child.type === "argument_list");
+  const argumentTypes = (argumentsNode?.namedChildren ?? []).filter((child) => child.type === "argument").map((argument) => csharpArgumentType(argument, bindings));
+  const boundReceiver = receiver ? bindings.get(receiver) ?? receiver : null;
+  return {
+    rawTarget: callable.text,
+    receiver,
+    methodName,
+    argumentTypes,
+    target: `${boundReceiver ? `${boundReceiver}.` : ""}${methodName}(${argumentTypes.join(",")})`,
+    genericTypes: nameNode.type === "generic_name" ? (nameNode.namedChildren.find((child) => child.type === "type_argument_list")?.namedChildren ?? []).map((child) => normalizeSemanticText(child.text)) : []
+  };
+}
+function csharpServiceRegistration(info2) {
+  if (!info2) return null;
+  const lifetime = (/* @__PURE__ */ new Map([
+    ["AddScoped", "scoped"],
+    ["AddTransient", "transient"],
+    ["AddSingleton", "singleton"]
+  ])).get(info2.methodName);
+  if (!lifetime || info2.genericTypes.length === 0 || info2.genericTypes.length > 2) return null;
+  const [service, implementation = service] = info2.genericTypes;
+  return { lifetime, service, implementation, target: `${lifetime}:${service}->${implementation}` };
+}
+function csharpStaticDatabaseSymbols(node, info2) {
+  if (!info2 || !/^(?:Query|QueryAsync|QueryFirst|QueryFirstAsync|QueryFirstOrDefault|QueryFirstOrDefaultAsync|Execute|ExecuteAsync|ExecuteScalar|ExecuteScalarAsync)$/u.test(info2.methodName)) {
+    return [];
+  }
+  const strings = [];
+  const collect = (current) => {
+    if (["string_literal", "verbatim_string_literal"].includes(current.type)) strings.push(current.text);
+    for (const child of current.namedChildren) collect(child);
+  };
+  collect(node);
+  return uniqueSorted(strings.flatMap((value) => value.match(/\bsp_[A-Za-z0-9_]+\b/gu) ?? []));
+}
+function csharpConstructorBindings(node, inputs) {
+  const parameterTypesByName = new Map(inputs.map((input) => [input.name, input.type]));
+  const bindings = [];
+  for (const assignment of descendants(node.childForFieldName("body"), "assignment_expression")) {
+    const left = assignment.childForFieldName("left")?.text;
+    const right = assignment.childForFieldName("right")?.text;
+    const type = parameterTypesByName.get(right);
+    if (left && type) bindings.push([left.replace(/^this\./u, ""), type]);
+  }
+  return bindings;
 }
 function combineCondition(previous, next, negate = false) {
   const expression = negate ? `NOT (${next.expression})` : next.expression;
@@ -5247,6 +5485,9 @@ function buildParsedFile(file, source, tree, config) {
   const entityById = /* @__PURE__ */ new Map();
   const localBindings = /* @__PURE__ */ new Map();
   const lexicalBindings = /* @__PURE__ */ new Map();
+  const javaReceiverTypes = /* @__PURE__ */ new Map();
+  const csharpReceiverTypes = /* @__PURE__ */ new Map();
+  const csharpMetadata = /* @__PURE__ */ new Map();
   const moduleEntity = createEntity({
     language: file.language,
     path: file.path,
@@ -5268,6 +5509,8 @@ function buildParsedFile(file, source, tree, config) {
     moduleEntity.stable_id,
     collectLocalBindings(tree.rootNode, file.language, /* @__PURE__ */ new Set(), true, false)
   );
+  csharpReceiverTypes.set(moduleEntity.stable_id, /* @__PURE__ */ new Map());
+  javaReceiverTypes.set(moduleEntity.stable_id, /* @__PURE__ */ new Map());
   const shallow = file.classification === CLASSIFICATION.GENERATED;
   if (shallow) {
     const header = source.subarray(0, Math.min(source.length, 4096)).toString("utf8");
@@ -5315,14 +5558,19 @@ function buildParsedFile(file, source, tree, config) {
     const declaration = declarationInfo(file.language, node, scope, namespace);
     if (declaration) {
       if (shallow && depth > 1) return;
-      const tags = tagsForDeclaration(file.language, declaration, decorators, node);
+      const parentMetadata = csharpMetadata.get(currentEntityId) ?? {};
+      const frameworkMetadata = file.language === "csharp" ? csharpSemanticMetadata(node, declaration, parentMetadata) : { tags: [] };
+      const tags = uniqueSorted([
+        ...tagsForDeclaration(file.language, declaration, decorators, node),
+        ...frameworkMetadata.tags
+      ]);
       const inferredEntryPoint = tags.some((tag) => tag.startsWith("entry_point:"));
       const declarationRisks = [
         file.classification === CLASSIFICATION.GENERATED ? RISK.GENERATED_CODE : null,
         buildCondition ? RISK.CONDITIONAL_COMPILATION : null,
-        inferredEntryPoint ? RISK.UNSUPPORTED_SEMANTICS : null
+        inferredEntryPoint && file.language !== "csharp" ? RISK.UNSUPPORTED_SEMANTICS : null
       ].filter(Boolean);
-      if (inferredEntryPoint) riskFlags.add(RISK.UNSUPPORTED_SEMANTICS);
+      if (inferredEntryPoint && file.language !== "csharp") riskFlags.add(RISK.UNSUPPORTED_SEMANTICS);
       const entity = createEntity({
         language: file.language,
         path: file.path,
@@ -5342,6 +5590,40 @@ function buildParsedFile(file, source, tree, config) {
       });
       entities.push(entity);
       entityById.set(entity.stable_id, entity);
+      if (file.language === "java") {
+        const inheritedReceiverTypes = javaReceiverTypes.get(currentEntityId) ?? /* @__PURE__ */ new Map();
+        const receiverTypes = new Map(inheritedReceiverTypes);
+        for (const input of entity.inputs) {
+          if (input.type) receiverTypes.set(input.name, input.type);
+        }
+        javaReceiverTypes.set(entity.stable_id, receiverTypes);
+      }
+      if (file.language === "csharp") {
+        const inheritedReceiverTypes = csharpReceiverTypes.get(currentEntityId) ?? /* @__PURE__ */ new Map();
+        const receiverTypes = new Map(inheritedReceiverTypes);
+        for (const input of entity.inputs) {
+          if (input.type) receiverTypes.set(input.name, input.type);
+        }
+        csharpReceiverTypes.set(entity.stable_id, receiverTypes);
+        csharpMetadata.set(entity.stable_id, frameworkMetadata);
+        if (node.type === "constructor_declaration") {
+          const ownerReceiverTypes = csharpReceiverTypes.get(currentEntityId) ?? /* @__PURE__ */ new Map();
+          for (const [field, type] of csharpConstructorBindings(node, entity.inputs)) {
+            ownerReceiverTypes.set(field, type);
+            receiverTypes.set(field, type);
+          }
+          for (const input of entity.inputs.filter((item) => item.type)) {
+            relations.push(createRelation({
+              src: currentEntityId,
+              unresolvedTarget: input.type,
+              kind: "DEPENDS_ON",
+              path: file.path,
+              node,
+              condition: activeCondition
+            }));
+          }
+        }
+      }
       recordUnsupportedCalls(declaration.parameters, currentEntityId, activeCondition);
       const inheritedBindings = lexicalBindings.get(currentEntityId) ?? /* @__PURE__ */ new Set();
       const ownLexicalBindings = /* @__PURE__ */ new Set([
@@ -5371,11 +5653,11 @@ function buildParsedFile(file, source, tree, config) {
           src: moduleEntity.stable_id,
           dst: entity.stable_id,
           kind: "ROUTES_TO",
-          confidence: CONFIDENCE.LOW,
+          confidence: file.language === "csharp" ? CONFIDENCE.HIGH : CONFIDENCE.LOW,
           path: file.path,
           node,
           condition: activeCondition,
-          riskFlags: [RISK.UNSUPPORTED_SEMANTICS]
+          riskFlags: file.language === "csharp" ? [] : [RISK.UNSUPPORTED_SEMANTICS]
         }));
       }
       const nextScope = declaration.kind === "class" || declaration.kind === "interface" ? [...scope, { name: declaration.name, kind: declaration.kind }] : [...scope, { name: declaration.name, kind: declaration.kind }];
@@ -5398,6 +5680,7 @@ function buildParsedFile(file, source, tree, config) {
           condition: activeCondition,
           type_only: imported.typeOnly,
           wildcard: Boolean(imported.wildcard),
+          namespace: Boolean(imported.namespace),
           source_location: sourceLocation(file.path, node)
         });
         imports[imported.alias] = bindings;
@@ -5420,6 +5703,21 @@ function buildParsedFile(file, source, tree, config) {
         );
       }
       return;
+    }
+    if (file.language === "csharp" && node.type === "field_declaration") {
+      const declarationNode = node.namedChildren.find((child) => child.type === "variable_declaration");
+      const type = declarationNode?.childForFieldName("type")?.text;
+      const receiverTypes = csharpReceiverTypes.get(currentEntityId);
+      if (type && receiverTypes) {
+        for (const declarator of declarationNode.namedChildren.filter((child) => child.type === "variable_declarator")) {
+          const name2 = declarator.childForFieldName("name")?.text;
+          if (name2) receiverTypes.set(name2, normalizeSemanticText(type));
+        }
+      }
+    }
+    if (file.language === "java") {
+      const receiverTypes = javaReceiverTypes.get(currentEntityId);
+      for (const [name2, type] of javaVariableBindings(node)) receiverTypes?.set(name2, type);
     }
     const condition = conditionParts(node);
     if (condition?.condition && condition.consequence) {
@@ -5466,7 +5764,7 @@ function buildParsedFile(file, source, tree, config) {
     }
     const constructed = constructorTarget(file.language, node);
     if (constructed) {
-      const constructorRisks = [RISK.UNSUPPORTED_SEMANTICS];
+      const constructorRisks = file.language === "csharp" ? [] : [RISK.UNSUPPORTED_SEMANTICS];
       addRisk(constructorRisks, riskFlags, entityById, currentEntityId);
       relations.push(createRelation({
         src: currentEntityId,
@@ -5479,7 +5777,9 @@ function buildParsedFile(file, source, tree, config) {
       }));
     }
     if (isCallNode(file.language, node)) {
-      const target = callTarget(file.language, node);
+      const javaInfo = file.language === "java" ? javaInvocationInfo(node, javaReceiverTypes.get(currentEntityId)) : null;
+      const csharpInfo = file.language === "csharp" ? csharpInvocationInfo(node, csharpReceiverTypes.get(currentEntityId)) : null;
+      const target = javaInfo?.target ?? csharpInfo?.target ?? callTarget(file.language, node);
       if (target) {
         const targetHead = target.replaceAll("?.", ".").split(".")[0];
         const shadowed = localBindings.get(currentEntityId)?.has(targetHead);
@@ -5497,6 +5797,51 @@ function buildParsedFile(file, source, tree, config) {
           condition: activeCondition,
           riskFlags: risks
         }));
+        if (file.language === "csharp") {
+          const registration = csharpServiceRegistration(csharpInfo);
+          if (registration) {
+            const registrationRisks = [RISK.DEPENDENCY_INJECTION];
+            addRisk(registrationRisks, riskFlags, entityById, currentEntityId);
+            const entity = entityById.get(currentEntityId);
+            if (entity) entity.semantic_tags = uniqueSorted([
+              ...entity.semantic_tags,
+              `di:lifetime:${registration.target}`
+            ]);
+            relations.push(createRelation({
+              src: currentEntityId,
+              unresolvedTarget: registration.target,
+              kind: "CONFIGURES",
+              path: file.path,
+              node,
+              condition: activeCondition,
+              riskFlags: registrationRisks
+            }));
+          }
+          const databaseSymbols = csharpStaticDatabaseSymbols(node, csharpInfo);
+          if (databaseSymbols.length > 0) {
+            const boundaryRisks = [RISK.CROSS_LANGUAGE_BOUNDARY];
+            addRisk(boundaryRisks, riskFlags, entityById, currentEntityId);
+            const entity = entityById.get(currentEntityId);
+            if (entity) {
+              entity.effects = uniqueSorted([...entity.effects, "database_access"]);
+              entity.semantic_tags = uniqueSorted([
+                ...entity.semantic_tags,
+                ...databaseSymbols.map((symbol) => `database:${symbol}`)
+              ]);
+            }
+            for (const symbol of databaseSymbols) {
+              relations.push(createRelation({
+                src: currentEntityId,
+                unresolvedTarget: symbol,
+                kind: "USES",
+                path: file.path,
+                node,
+                condition: activeCondition,
+                riskFlags: boundaryRisks
+              }));
+            }
+          }
+        }
         if (/\b(app|router|server)\.(get|post|put|patch|delete|route|handle)\b/iu.test(target) || /\bhttp\.handlefunc\b/iu.test(target)) {
           const handler = node.childForFieldName("arguments")?.namedChildren.at(-1)?.text;
           if (handler) {
@@ -5846,7 +6191,7 @@ async function scanProject(root, config) {
 // src/resolver.js
 import { posix } from "node:path";
 function stripLanguageExtension(value) {
-  return value.replace(/\.(?:py|jsx?|mjs|cjs|tsx?|mts|cts|java|go)$/iu, "");
+  return value.replace(/\.(?:py|jsx?|mjs|cjs|tsx?|mts|cts|java|go|cs)$/iu, "");
 }
 function normalizeRelativeImport(rawTarget, sourcePath) {
   if (!rawTarget.startsWith(".")) return rawTarget;
@@ -5869,8 +6214,89 @@ function cleanedTarget(rawTarget, sourcePath) {
   return target.replace(/^\.+/u, "").replace(/\.+/gu, ".");
 }
 function entityNameCandidates(target, byName) {
-  const name2 = target.split(".").at(-1);
+  const name2 = target.split(".").at(-1).replace(/\([^()]*\)$/u, "");
   return byName.get(name2) ?? [];
+}
+function csharpNamespaceTargets(file) {
+  const bindings = file.imports?.["@namespace"] ?? [];
+  return (Array.isArray(bindings) ? bindings : [bindings]).map((binding) => binding?.target).filter(Boolean);
+}
+function csharpCandidateType(candidate, entities) {
+  if (["class", "record", "struct", "interface"].includes(candidate.kind)) return candidate;
+  if (candidate.kind !== "method") return null;
+  const methodParent = candidate.qualified_name.slice(0, candidate.qualified_name.lastIndexOf("."));
+  return entities.find((entity) => ["class", "record", "struct", "interface"].includes(entity.kind) && entity.file_path === candidate.file_path && entity.qualified_name === methodParent) ?? null;
+}
+function csharpTypeEvidence(candidate, source, file, entities) {
+  const type = csharpCandidateType(candidate, entities);
+  if (!type) return false;
+  const namespace = type.qualified_name.slice(0, type.qualified_name.lastIndexOf("."));
+  const sourceModule = entities.find((entity) => entity.file_path === source.file_path && entity.kind === "module");
+  return namespace === sourceModule?.qualified_name || csharpNamespaceTargets(file).includes(namespace) || candidate.file_path === source.file_path;
+}
+function csharpMemberCandidates(target, candidates, source, file, entities) {
+  const match = target.match(/^(.+)\.([^.()]+)\((.*)\)$/u);
+  if (!match) return [];
+  const [, rawReceiver, method, rawArguments] = match;
+  const receiver = rawReceiver.split(".").at(-1).replace(/\?$/u, "");
+  const argumentTypes = rawArguments === "" ? [] : rawArguments.split(",").map((value) => value.trim());
+  return candidates.filter((candidate) => {
+    if (candidate.kind !== "method" || candidate.name !== method) return false;
+    const type = csharpCandidateType(candidate, entities);
+    if (!type || type.name !== receiver || candidate.inputs.length !== argumentTypes.length) return false;
+    if (!csharpTypeEvidence(candidate, source, file, entities)) return false;
+    return argumentTypes.every((argumentType, index) => argumentType === "?" || argumentType.replace(/\?$/u, "") === candidate.inputs[index]?.type?.replace(/\?$/u, ""));
+  });
+}
+function csharpLocalMethodCandidates(target, candidates, source) {
+  const match = target.match(/^([^.()]+)\((.*)\)$/u);
+  if (!match || source.kind !== "method") return [];
+  const [, method, rawArguments] = match;
+  const argumentCount = rawArguments === "" ? 0 : rawArguments.split(",").length;
+  const owner = source.qualified_name.slice(0, source.qualified_name.lastIndexOf("."));
+  return candidates.filter((candidate) => candidate.kind === "method" && candidate.name === method && candidate.file_path === source.file_path && candidate.inputs.length === argumentCount && candidate.qualified_name.startsWith(`${owner}.`));
+}
+function javaCandidateType(candidate, entities) {
+  if (["class", "record", "enum", "interface"].includes(candidate.kind)) return candidate;
+  if (candidate.kind !== "method") return null;
+  const methodParent = candidate.qualified_name.slice(0, candidate.qualified_name.lastIndexOf("."));
+  return entities.find((entity) => ["class", "record", "enum", "interface"].includes(entity.kind) && entity.file_path === candidate.file_path && entity.qualified_name === methodParent) ?? null;
+}
+function javaTypeEvidence(candidate, source, file, entities) {
+  const type = javaCandidateType(candidate, entities);
+  if (!type) return false;
+  if (candidate.file_path === source.file_path) return true;
+  const sourceModule = entities.find((entity) => entity.file_path === source.file_path && entity.kind === "module");
+  const packageName = type.qualified_name.slice(0, type.qualified_name.lastIndexOf("."));
+  if (packageName === sourceModule?.qualified_name) return true;
+  const bindings = file.imports?.[type.name] ?? [];
+  return (Array.isArray(bindings) ? bindings : [bindings]).some((binding) => binding?.target === type.qualified_name);
+}
+function typeArgumentsMatch(rawArguments, candidate) {
+  const argumentTypes = rawArguments === "" ? [] : rawArguments.split(",").map((value) => {
+    const type = value.trim();
+    return type === "?" ? type : type.replace(/\?$/u, "");
+  });
+  if (candidate.inputs.length !== argumentTypes.length) return false;
+  return argumentTypes.every((argumentType, index) => argumentType === "?" || argumentType === candidate.inputs[index]?.type?.replace(/\?$/u, ""));
+}
+function javaMemberCandidates(target, candidates, source, file, entities) {
+  const match = target.match(/^(.+)\.([^.()]+)\((.*)\)$/u);
+  if (!match) return [];
+  const [, rawReceiver, method, rawArguments] = match;
+  const receiver = rawReceiver.split(".").at(-1).replace(/<.*>$/u, "");
+  return candidates.filter((candidate) => {
+    if (candidate.kind !== "method" || candidate.name !== method) return false;
+    const type = javaCandidateType(candidate, entities);
+    return type?.name === receiver && typeArgumentsMatch(rawArguments, candidate) && javaTypeEvidence(candidate, source, file, entities);
+  });
+}
+function javaLocalMethodCandidates(target, candidates, source) {
+  const match = target.match(/^([^.()]+)\((.*)\)$/u);
+  if (!match || source.kind !== "method") return [];
+  const [, method, rawArguments] = match;
+  const owner = source.qualified_name.slice(0, source.qualified_name.lastIndexOf("."));
+  return candidates.filter((candidate) => candidate.kind === "method" && candidate.name === method && candidate.file_path === source.file_path && candidate.qualified_name.startsWith(`${owner}.`) && typeArgumentsMatch(rawArguments, candidate));
 }
 function scopedImportBindings(rawBindings, source, byId) {
   if (!rawBindings) return [];
@@ -5905,8 +6331,12 @@ function candidatesForRelation(relation, candidates) {
   if (relation.kind === "CALLS" || relation.kind === "ROUTES_TO") {
     return candidates.filter((candidate) => ["function", "method", "class"].includes(candidate.kind));
   }
-  if (relation.kind === "CREATES") return candidates.filter((candidate) => candidate.kind === "class");
-  if (relation.kind === "INHERITS") return candidates.filter((candidate) => ["class", "interface"].includes(candidate.kind));
+  if (relation.kind === "CREATES") {
+    return candidates.filter((candidate) => ["class", "record", "struct"].includes(candidate.kind));
+  }
+  if (relation.kind === "INHERITS") {
+    return candidates.filter((candidate) => ["class", "record", "interface"].includes(candidate.kind));
+  }
   if (relation.kind === "IMPLEMENTS") return candidates.filter((candidate) => candidate.kind === "interface");
   return candidates;
 }
@@ -6055,9 +6485,66 @@ function resolveOne(relation, source, file, entities, byName, byId) {
   const rawTarget = relation.unresolved_target;
   if (!rawTarget) return relation;
   const target = cleanedTarget(rawTarget, file.path);
-  const candidates = candidatesForRelation(relation, entityNameCandidates(target, byName));
+  const rawNameCandidates = entityNameCandidates(target, byName);
+  if (file.language === "csharp" && relation.kind === "INHERITS") {
+    const interfaces = rawNameCandidates.filter((candidate) => candidate.kind === "interface" && csharpTypeEvidence(candidate, source, file, entities));
+    const classes = rawNameCandidates.filter((candidate) => ["class", "record"].includes(candidate.kind) && csharpTypeEvidence(candidate, source, file, entities));
+    if (interfaces.length === 1 && classes.length === 0) relation.kind = "IMPLEMENTS";
+  }
+  let candidates = candidatesForRelation(relation, rawNameCandidates);
   const dynamicallyShadowed = relation.risk_flags.includes(RISK.DYNAMIC_DISPATCH) || source.inputs.some((input) => input.name === target.split(".")[0]);
   const highConfidenceBlocked = () => relation.risk_flags.some((risk) => INCOMPLETE_RISKS.has(risk));
+  if (file.language === "csharp" && relation.kind === "CALLS") {
+    const members = csharpMemberCandidates(target, candidates, source, file, entities);
+    if (members.length === 1 && !highConfidenceBlocked()) {
+      relation.dst_entity_id = members[0].stable_id;
+      relation.confidence = CONFIDENCE.HIGH;
+      relation.candidates = [];
+      return relation;
+    }
+    if (members.length > 0) candidates = members;
+    const localMethods = csharpLocalMethodCandidates(target, candidates, source);
+    if (localMethods.length === 1 && !highConfidenceBlocked()) {
+      relation.dst_entity_id = localMethods[0].stable_id;
+      relation.confidence = CONFIDENCE.HIGH;
+      relation.candidates = [];
+      return relation;
+    }
+    if (localMethods.length > 0) candidates = localMethods;
+  }
+  if (file.language === "java" && relation.kind === "CALLS") {
+    const members = javaMemberCandidates(target, candidates, source, file, entities);
+    if (members.length === 1 && !highConfidenceBlocked()) {
+      relation.dst_entity_id = members[0].stable_id;
+      relation.confidence = CONFIDENCE.HIGH;
+      relation.candidates = [];
+      return relation;
+    }
+    if (members.length > 0) candidates = members;
+    const localMethods = javaLocalMethodCandidates(target, candidates, source);
+    if (localMethods.length === 1 && !highConfidenceBlocked()) {
+      relation.dst_entity_id = localMethods[0].stable_id;
+      relation.confidence = CONFIDENCE.HIGH;
+      relation.candidates = [];
+      return relation;
+    }
+    if (localMethods.length > 0) candidates = localMethods;
+  }
+  if (file.language === "csharp" && ["DEPENDS_ON", "INHERITS", "IMPLEMENTS"].includes(relation.kind)) {
+    const structural = candidates.filter((candidate) => csharpTypeEvidence(
+      candidate,
+      source,
+      file,
+      entities
+    ));
+    if (structural.length === 1 && !highConfidenceBlocked()) {
+      relation.dst_entity_id = structural[0].stable_id;
+      relation.confidence = CONFIDENCE.HIGH;
+      relation.candidates = [];
+      return relation;
+    }
+    if (structural.length > 0) candidates = structural;
+  }
   const module2 = entities.find((entity) => entity.file_path === source.file_path && entity.kind === "module");
   const local = candidates.filter((candidate) => {
     if (candidate.file_path !== source.file_path || !module2) return false;
@@ -8227,6 +8714,14 @@ var GENERIC_QUERY_TOKENS = /* @__PURE__ */ new Set([
 function tokens(value) {
   return (value.toLocaleLowerCase("en-US").match(/[\p{L}\p{N}_]+/gu) ?? []).filter((token) => token.length > 1);
 }
+function conceptTokens(value) {
+  return tokens(String(value ?? "").replace(/([\p{Ll}\p{N}])([\p{Lu}])/gu, "$1 $2"));
+}
+function sameConcept(left, right) {
+  if (left === right) return true;
+  const shared = Math.min(left.length, right.length);
+  return shared >= 4 && (left.startsWith(right) || right.startsWith(left));
+}
 function pathDescriptor(path) {
   return {
     basename: path.split("/").at(-1),
@@ -8252,6 +8747,34 @@ function entityView(entity, initialCandidates) {
     source_location: entity.source_location,
     selection_origin: candidate ? "QUERY_MATCH" : "GRAPH_EXPANSION",
     ...candidate ? { match_evidence: candidate.evidence } : {}
+  };
+}
+function compactEntityView(entity) {
+  return Object.fromEntries(Object.entries(entity).filter(([, value]) => !Array.isArray(value) || value.length > 0));
+}
+function slimEntityView(entity) {
+  return Object.fromEntries([
+    "stable_id",
+    "kind",
+    "name",
+    "qualified_name",
+    "confidence",
+    "classification",
+    "risk_flags",
+    "source_location",
+    "selection_origin",
+    "match_evidence"
+  ].filter((key) => Object.hasOwn(entity, key)).map((key) => [key, entity[key]]));
+}
+function minimalEntityView(entity) {
+  return {
+    kind: entity.kind,
+    name: entity.name,
+    qualified_name: entity.qualified_name,
+    source_location: entity.source_location ? { file_path: entity.source_location.file_path, start_line: entity.source_location.start_line } : null,
+    selection_origin: entity.selection_origin,
+    ...entity.match_evidence ? { match_evidence: entity.match_evidence } : {},
+    ...entity.risk_flags?.length > 0 ? { risk_flags: entity.risk_flags } : {}
   };
 }
 function relationView(relation, entityById) {
@@ -8287,10 +8810,15 @@ function retrievalCandidate(entity, queryTokens, focus, knownSymbols, ftsOrder) 
     entity.qualified_name,
     entity.file_path,
     entity.signature,
-    ...entity.semantic_tags
+    ...entity.semantic_tags,
+    entity.documentation
   ].join(" ").toLocaleLowerCase("en-US");
   const evidence = /* @__PURE__ */ new Set();
   const matchedQueryTokens = /* @__PURE__ */ new Set();
+  const nameConcepts = conceptTokens(`${entity.name} ${entity.qualified_name}`);
+  const haystackConcepts = conceptTokens(haystack);
+  let nameConceptMatches = 0;
+  let meaningfulNameConceptMatches = 0;
   let evidenceStrength = 0;
   const addEvidence = (kind, strength) => {
     evidence.add(kind);
@@ -8301,6 +8829,14 @@ function retrievalCandidate(entity, queryTokens, focus, knownSymbols, ftsOrder) 
   for (const token of queryTokens) {
     if (name2 === token) {
       addEvidence("NAME_EXACT", 800);
+      matchedQueryTokens.add(token);
+    } else if (nameConcepts.some((concept) => sameConcept(token, concept))) {
+      addEvidence("NAME_TOKEN_MATCH", 550);
+      matchedQueryTokens.add(token);
+      nameConceptMatches += 1;
+      if (!GENERIC_QUERY_TOKENS.has(token)) meaningfulNameConceptMatches += 1;
+    } else if (haystackConcepts.some((concept) => sameConcept(token, concept))) {
+      addEvidence("QUERY_TOKEN_MATCH", 500);
       matchedQueryTokens.add(token);
     } else if (haystack.includes(token)) {
       addEvidence("QUERY_TOKEN_MATCH", 500);
@@ -8329,13 +8865,14 @@ function retrievalCandidate(entity, queryTokens, focus, knownSymbols, ftsOrder) 
   if (evidence.size === 0) return null;
   const priorScore = rankingPrior(entity);
   const ftsScore = ftsIndex === void 0 ? 0 : Math.max(0, 100 - ftsIndex);
+  const multiConceptTypeBonus = ["class", "record", "struct", "enum", "interface"].includes(entity.kind) && meaningfulNameConceptMatches >= 2 ? 120 : 0;
   return {
     entity,
     evidence: [...evidence].sort(),
     evidenceStrength,
     matchedQueryTokens: [...matchedQueryTokens],
     priorScore,
-    score: evidenceStrength + ftsScore + priorScore
+    score: evidenceStrength + ftsScore + priorScore + nameConceptMatches * 15 + multiConceptTypeBonus
   };
 }
 function rankRetrievalCandidates(entities, {
@@ -8345,6 +8882,15 @@ function rankRetrievalCandidates(entities, {
   ftsOrder
 }) {
   return entities.map((entity) => retrievalCandidate(entity, queryTokens, focus, knownSymbols, ftsOrder)).filter(Boolean).sort((left, right) => right.score - left.score || left.entity.qualified_name.localeCompare(right.entity.qualified_name));
+}
+function candidatesWithSufficientEvidence(candidates, queryTokens, focus, knownSymbols) {
+  if (focus || knownSymbols.length > 0) return candidates;
+  const meaningfulQueryTokens = uniqueSorted(queryTokens.filter((token) => !GENERIC_QUERY_TOKENS.has(token)));
+  if (meaningfulQueryTokens.length < 3) return candidates;
+  return candidates.filter((candidate) => {
+    const meaningfulMatches = candidate.matchedQueryTokens.filter((token) => !GENERIC_QUERY_TOKENS.has(token));
+    return candidate.evidence.includes("NAME_EXACT") || meaningfulMatches.length >= 2 || candidate.evidence.includes("NAME_TOKEN_MATCH") && candidate.matchedQueryTokens.length >= 2;
+  });
 }
 function focusAnchors(candidates, focus) {
   if (!focus) return [];
@@ -8448,7 +8994,13 @@ function trimToBudget(response, budget, impact = false) {
   measureResponse(response);
   while (response.response_bytes > byteLimit) {
     if (response.relations.length > 0) response.relations.pop();
-    else if (response.entities.length > 1) response.entities.pop();
+    else if (response.entities.some((entity) => Object.values(entity).some((value) => Array.isArray(value) && value.length === 0))) {
+      response.entities = response.entities.map(compactEntityView);
+    } else if (response.entities.some((entity) => Object.hasOwn(entity, "signature"))) {
+      response.entities = response.entities.map(slimEntityView);
+    } else if (response.entities.some((entity) => Object.hasOwn(entity, "stable_id"))) {
+      response.entities = response.entities.map(minimalEntityView);
+    } else if (response.entities.length > 1) response.entities.pop();
     else if (response.regions.length > 1) response.regions.pop();
     else if (response.suggestions?.length > 0) response.suggestions.pop();
     else if (response.unsupported_files?.length > (impact && response.unsupported_file_count > 0 ? 1 : 0)) {
@@ -8637,18 +9189,28 @@ async function semanticExplore(root, request, contexts = /* @__PURE__ */ new Map
     const queryTokens = tokens(request.task);
     const fts = store.searchEntities([request.task, request.focus ?? "", ...knownSymbols], 100);
     const ftsOrder = new Map(fts.map((row, index) => [row.stable_id, index]));
-    const rankedCandidates = rankRetrievalCandidates(snapshot.entities, {
+    const rankedCandidates = candidatesWithSufficientEvidence(rankRetrievalCandidates(snapshot.entities, {
       queryTokens,
       focus: request.focus,
       knownSymbols,
       ftsOrder
-    });
+    }), queryTokens, request.focus, knownSymbols);
     const anchors = focusAnchors(rankedCandidates, request.focus);
     const selectedCandidates = (anchors.length > 0 ? anchors : rankedCandidates).slice(0, impact ? 40 : 20);
     const selectedEntities = selectedCandidates.map(({ entity }) => entity);
     const retrievalStatus_ = retrievalStatus(snapshot.entities, selectedCandidates, request.focus);
     const retrievalEvidence = uniqueSorted(selectedCandidates.flatMap(({ evidence }) => evidence));
     const selectedIds = new Set(selectedEntities.map((entity) => entity.stable_id));
+    const ownerOrder = /* @__PURE__ */ new Map();
+    for (const [index, entity] of selectedEntities.entries()) {
+      if (entity.kind !== "method") continue;
+      const ownerName = entity.qualified_name.slice(0, entity.qualified_name.lastIndexOf("."));
+      const owner = snapshot.entities.find((candidate) => candidate.file_path === entity.file_path && ["class", "record", "struct", "enum", "interface"].includes(candidate.kind) && candidate.qualified_name === ownerName);
+      if (owner) {
+        selectedIds.add(owner.stable_id);
+        ownerOrder.set(owner.stable_id, Math.min(ownerOrder.get(owner.stable_id) ?? Infinity, index + 0.5));
+      }
+    }
     const initialCandidates = new Map(selectedCandidates.map((candidate) => [candidate.entity.stable_id, candidate]));
     const initialOrder = new Map(selectedCandidates.map((candidate, index) => [candidate.entity.stable_id, index]));
     const selectedNames = new Set(selectedEntities.map((entity) => entity.name));
@@ -8656,13 +9218,37 @@ async function semanticExplore(root, request, contexts = /* @__PURE__ */ new Map
     const relationLimit = impact ? 120 : 80;
     const relevantRelations = allRelevantRelations.slice(0, relationLimit);
     const relationCandidatesTruncated = allRelevantRelations.length > relevantRelations.length;
+    const relationOrder = /* @__PURE__ */ new Map();
     for (const relation of relevantRelations) {
       if (relation.src_entity_id) selectedIds.add(relation.src_entity_id);
       if (relation.dst_entity_id) selectedIds.add(relation.dst_entity_id);
+      const sourceOrder = initialOrder.get(relation.src_entity_id) ?? ownerOrder.get(relation.src_entity_id);
+      const targetOrder = initialOrder.get(relation.dst_entity_id) ?? ownerOrder.get(relation.dst_entity_id);
+      if (sourceOrder !== void 0 && relation.dst_entity_id) {
+        relationOrder.set(
+          relation.dst_entity_id,
+          Math.min(relationOrder.get(relation.dst_entity_id) ?? Infinity, sourceOrder + 0.25)
+        );
+      }
+      if (targetOrder !== void 0 && relation.src_entity_id) {
+        relationOrder.set(
+          relation.src_entity_id,
+          Math.min(relationOrder.get(relation.src_entity_id) ?? Infinity, targetOrder + 0.25)
+        );
+      }
+    }
+    for (const entity of snapshot.entities.filter((candidate) => selectedIds.has(candidate.stable_id) && candidate.kind === "method")) {
+      const ownerName = entity.qualified_name.slice(0, entity.qualified_name.lastIndexOf("."));
+      const owner = snapshot.entities.find((candidate) => candidate.file_path === entity.file_path && ["class", "record", "struct", "enum", "interface"].includes(candidate.kind) && candidate.qualified_name === ownerName);
+      if (owner) {
+        selectedIds.add(owner.stable_id);
+        const methodOrder = initialOrder.get(entity.stable_id) ?? relationOrder.get(entity.stable_id) ?? Number.MAX_SAFE_INTEGER;
+        ownerOrder.set(owner.stable_id, Math.min(ownerOrder.get(owner.stable_id) ?? Infinity, methodOrder + 0.1));
+      }
     }
     const expandedEntities = snapshot.entities.filter((entity) => selectedIds.has(entity.stable_id)).sort((left, right) => {
-      const leftOrder = initialOrder.get(left.stable_id) ?? Number.MAX_SAFE_INTEGER;
-      const rightOrder = initialOrder.get(right.stable_id) ?? Number.MAX_SAFE_INTEGER;
+      const leftOrder = initialOrder.get(left.stable_id) ?? ownerOrder.get(left.stable_id) ?? relationOrder.get(left.stable_id) ?? Number.MAX_SAFE_INTEGER;
+      const rightOrder = initialOrder.get(right.stable_id) ?? ownerOrder.get(right.stable_id) ?? relationOrder.get(right.stable_id) ?? Number.MAX_SAFE_INTEGER;
       return leftOrder - rightOrder || left.qualified_name.localeCompare(right.qualified_name);
     }).slice(0, impact ? 60 : 30);
     const entityById = new Map(snapshot.entities.map((entity) => [entity.stable_id, entity]));

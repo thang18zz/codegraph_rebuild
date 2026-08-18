@@ -35,6 +35,16 @@ function tokens(value) {
     .filter((token) => token.length > 1);
 }
 
+function conceptTokens(value) {
+  return tokens(String(value ?? "").replace(/([\p{Ll}\p{N}])([\p{Lu}])/gu, "$1 $2"));
+}
+
+function sameConcept(left, right) {
+  if (left === right) return true;
+  const shared = Math.min(left.length, right.length);
+  return shared >= 4 && (left.startsWith(right) || right.startsWith(left));
+}
+
 function pathDescriptor(path) {
   return {
     basename: path.split("/").at(-1),
@@ -61,6 +71,41 @@ function entityView(entity, initialCandidates) {
     source_location: entity.source_location,
     selection_origin: candidate ? "QUERY_MATCH" : "GRAPH_EXPANSION",
     ...(candidate ? { match_evidence: candidate.evidence } : {}),
+  };
+}
+
+function compactEntityView(entity) {
+  return Object.fromEntries(Object.entries(entity).filter(([, value]) => (
+    !Array.isArray(value) || value.length > 0
+  )));
+}
+
+function slimEntityView(entity) {
+  return Object.fromEntries([
+    "stable_id",
+    "kind",
+    "name",
+    "qualified_name",
+    "confidence",
+    "classification",
+    "risk_flags",
+    "source_location",
+    "selection_origin",
+    "match_evidence",
+  ].filter((key) => Object.hasOwn(entity, key)).map((key) => [key, entity[key]]));
+}
+
+function minimalEntityView(entity) {
+  return {
+    kind: entity.kind,
+    name: entity.name,
+    qualified_name: entity.qualified_name,
+    source_location: entity.source_location
+      ? { file_path: entity.source_location.file_path, start_line: entity.source_location.start_line }
+      : null,
+    selection_origin: entity.selection_origin,
+    ...(entity.match_evidence ? { match_evidence: entity.match_evidence } : {}),
+    ...(entity.risk_flags?.length > 0 ? { risk_flags: entity.risk_flags } : {}),
   };
 }
 
@@ -103,9 +148,14 @@ function retrievalCandidate(entity, queryTokens, focus, knownSymbols, ftsOrder) 
     entity.file_path,
     entity.signature,
     ...entity.semantic_tags,
+    entity.documentation,
   ].join(" ").toLocaleLowerCase("en-US");
   const evidence = new Set();
   const matchedQueryTokens = new Set();
+  const nameConcepts = conceptTokens(`${entity.name} ${entity.qualified_name}`);
+  const haystackConcepts = conceptTokens(haystack);
+  let nameConceptMatches = 0;
+  let meaningfulNameConceptMatches = 0;
   let evidenceStrength = 0;
   const addEvidence = (kind, strength) => {
     evidence.add(kind);
@@ -117,6 +167,14 @@ function retrievalCandidate(entity, queryTokens, focus, knownSymbols, ftsOrder) 
   for (const token of queryTokens) {
     if (name === token) {
       addEvidence("NAME_EXACT", 800);
+      matchedQueryTokens.add(token);
+    } else if (nameConcepts.some((concept) => sameConcept(token, concept))) {
+      addEvidence("NAME_TOKEN_MATCH", 550);
+      matchedQueryTokens.add(token);
+      nameConceptMatches += 1;
+      if (!GENERIC_QUERY_TOKENS.has(token)) meaningfulNameConceptMatches += 1;
+    } else if (haystackConcepts.some((concept) => sameConcept(token, concept))) {
+      addEvidence("QUERY_TOKEN_MATCH", 500);
       matchedQueryTokens.add(token);
     } else if (haystack.includes(token)) {
       addEvidence("QUERY_TOKEN_MATCH", 500);
@@ -145,13 +203,15 @@ function retrievalCandidate(entity, queryTokens, focus, knownSymbols, ftsOrder) 
   if (evidence.size === 0) return null;
   const priorScore = rankingPrior(entity);
   const ftsScore = ftsIndex === undefined ? 0 : Math.max(0, 100 - ftsIndex);
+  const multiConceptTypeBonus = ["class", "record", "struct", "enum", "interface"].includes(entity.kind)
+    && meaningfulNameConceptMatches >= 2 ? 120 : 0;
   return {
     entity,
     evidence: [...evidence].sort(),
     evidenceStrength,
     matchedQueryTokens: [...matchedQueryTokens],
     priorScore,
-    score: evidenceStrength + ftsScore + priorScore,
+    score: evidenceStrength + ftsScore + priorScore + (nameConceptMatches * 15) + multiConceptTypeBonus,
   };
 }
 
@@ -166,6 +226,23 @@ export function rankRetrievalCandidates(entities, {
     .filter(Boolean)
     .sort((left, right) => right.score - left.score
       || left.entity.qualified_name.localeCompare(right.entity.qualified_name));
+}
+
+function candidatesWithSufficientEvidence(candidates, queryTokens, focus, knownSymbols) {
+  if (focus || knownSymbols.length > 0) return candidates;
+  const meaningfulQueryTokens = uniqueSorted(queryTokens.filter((token) => (
+    !GENERIC_QUERY_TOKENS.has(token)
+  )));
+  if (meaningfulQueryTokens.length < 3) return candidates;
+  return candidates.filter((candidate) => {
+    const meaningfulMatches = candidate.matchedQueryTokens.filter((token) => (
+      !GENERIC_QUERY_TOKENS.has(token)
+    ));
+    return candidate.evidence.includes("NAME_EXACT")
+      || meaningfulMatches.length >= 2
+      || (candidate.evidence.includes("NAME_TOKEN_MATCH")
+        && candidate.matchedQueryTokens.length >= 2);
+  });
 }
 
 function focusAnchors(candidates, focus) {
@@ -311,6 +388,17 @@ function trimToBudget(response, budget, impact = false) {
   measureResponse(response);
   while (response.response_bytes > byteLimit) {
     if (response.relations.length > 0) response.relations.pop();
+    else if (response.entities.some((entity) => Object.values(entity).some((value) => (
+      Array.isArray(value) && value.length === 0
+    )))) {
+      response.entities = response.entities.map(compactEntityView);
+    }
+    else if (response.entities.some((entity) => Object.hasOwn(entity, "signature"))) {
+      response.entities = response.entities.map(slimEntityView);
+    }
+    else if (response.entities.some((entity) => Object.hasOwn(entity, "stable_id"))) {
+      response.entities = response.entities.map(minimalEntityView);
+    }
     else if (response.entities.length > 1) response.entities.pop();
     else if (response.regions.length > 1) response.regions.pop();
     else if (response.suggestions?.length > 0) response.suggestions.pop();
@@ -518,12 +606,12 @@ export async function semanticExplore(root, request, contexts = new Map()) {
     const queryTokens = tokens(request.task);
     const fts = store.searchEntities([request.task, request.focus ?? "", ...knownSymbols], 100);
     const ftsOrder = new Map(fts.map((row, index) => [row.stable_id, index]));
-    const rankedCandidates = rankRetrievalCandidates(snapshot.entities, {
+    const rankedCandidates = candidatesWithSufficientEvidence(rankRetrievalCandidates(snapshot.entities, {
       queryTokens,
       focus: request.focus,
       knownSymbols,
       ftsOrder,
-    });
+    }), queryTokens, request.focus, knownSymbols);
     const anchors = focusAnchors(rankedCandidates, request.focus);
     const selectedCandidates = (anchors.length > 0 ? anchors : rankedCandidates)
       .slice(0, impact ? 40 : 20);
@@ -531,6 +619,18 @@ export async function semanticExplore(root, request, contexts = new Map()) {
     const retrievalStatus_ = retrievalStatus(snapshot.entities, selectedCandidates, request.focus);
     const retrievalEvidence = uniqueSorted(selectedCandidates.flatMap(({ evidence }) => evidence));
     const selectedIds = new Set(selectedEntities.map((entity) => entity.stable_id));
+    const ownerOrder = new Map();
+    for (const [index, entity] of selectedEntities.entries()) {
+      if (entity.kind !== "method") continue;
+      const ownerName = entity.qualified_name.slice(0, entity.qualified_name.lastIndexOf("."));
+      const owner = snapshot.entities.find((candidate) => candidate.file_path === entity.file_path
+        && ["class", "record", "struct", "enum", "interface"].includes(candidate.kind)
+        && candidate.qualified_name === ownerName);
+      if (owner) {
+        selectedIds.add(owner.stable_id);
+        ownerOrder.set(owner.stable_id, Math.min(ownerOrder.get(owner.stable_id) ?? Infinity, index + 0.5));
+      }
+    }
     const initialCandidates = new Map(selectedCandidates.map((candidate) => (
       [candidate.entity.stable_id, candidate]
     )));
@@ -546,15 +646,53 @@ export async function semanticExplore(root, request, contexts = new Map()) {
     const relationLimit = impact ? 120 : 80;
     const relevantRelations = allRelevantRelations.slice(0, relationLimit);
     const relationCandidatesTruncated = allRelevantRelations.length > relevantRelations.length;
+    const relationOrder = new Map();
     for (const relation of relevantRelations) {
       if (relation.src_entity_id) selectedIds.add(relation.src_entity_id);
       if (relation.dst_entity_id) selectedIds.add(relation.dst_entity_id);
+      const sourceOrder = initialOrder.get(relation.src_entity_id)
+        ?? ownerOrder.get(relation.src_entity_id);
+      const targetOrder = initialOrder.get(relation.dst_entity_id)
+        ?? ownerOrder.get(relation.dst_entity_id);
+      if (sourceOrder !== undefined && relation.dst_entity_id) {
+        relationOrder.set(
+          relation.dst_entity_id,
+          Math.min(relationOrder.get(relation.dst_entity_id) ?? Infinity, sourceOrder + 0.25),
+        );
+      }
+      if (targetOrder !== undefined && relation.src_entity_id) {
+        relationOrder.set(
+          relation.src_entity_id,
+          Math.min(relationOrder.get(relation.src_entity_id) ?? Infinity, targetOrder + 0.25),
+        );
+      }
+    }
+    for (const entity of snapshot.entities.filter((candidate) => (
+      selectedIds.has(candidate.stable_id) && candidate.kind === "method"
+    ))) {
+      const ownerName = entity.qualified_name.slice(0, entity.qualified_name.lastIndexOf("."));
+      const owner = snapshot.entities.find((candidate) => candidate.file_path === entity.file_path
+        && ["class", "record", "struct", "enum", "interface"].includes(candidate.kind)
+        && candidate.qualified_name === ownerName);
+      if (owner) {
+        selectedIds.add(owner.stable_id);
+        const methodOrder = initialOrder.get(entity.stable_id)
+          ?? relationOrder.get(entity.stable_id)
+          ?? Number.MAX_SAFE_INTEGER;
+        ownerOrder.set(owner.stable_id, Math.min(ownerOrder.get(owner.stable_id) ?? Infinity, methodOrder + 0.1));
+      }
     }
     const expandedEntities = snapshot.entities
       .filter((entity) => selectedIds.has(entity.stable_id))
       .sort((left, right) => {
-        const leftOrder = initialOrder.get(left.stable_id) ?? Number.MAX_SAFE_INTEGER;
-        const rightOrder = initialOrder.get(right.stable_id) ?? Number.MAX_SAFE_INTEGER;
+        const leftOrder = initialOrder.get(left.stable_id)
+          ?? ownerOrder.get(left.stable_id)
+          ?? relationOrder.get(left.stable_id)
+          ?? Number.MAX_SAFE_INTEGER;
+        const rightOrder = initialOrder.get(right.stable_id)
+          ?? ownerOrder.get(right.stable_id)
+          ?? relationOrder.get(right.stable_id)
+          ?? Number.MAX_SAFE_INTEGER;
         return leftOrder - rightOrder || left.qualified_name.localeCompare(right.qualified_name);
       })
       .slice(0, impact ? 60 : 30);

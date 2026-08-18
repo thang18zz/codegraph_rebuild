@@ -30,7 +30,7 @@ import {
   removeDerivedProject,
   synchronizeProject,
 } from "../src/sync.js";
-import { sourceHashes, temporaryProject } from "./helpers.js";
+import { requireSymlinkCapability, sourceHashes, temporaryProject } from "./helpers.js";
 
 function runCli(cwd, command) {
   return new Promise((resolvePromise, reject) => {
@@ -322,6 +322,7 @@ test("derived-state removal preserves a root codegraph.py replaced by user sourc
 });
 
 test("init rejects a symlinked .codegraph directory without writing outside the project", async (t) => {
+  if (!(await requireSymlinkCapability(t, "dir"))) return;
   const project = await temporaryProject();
   const external = await temporaryProject("codegraph-external-");
   t.after(() => project.cleanup());
@@ -416,6 +417,7 @@ test("a newly unreadable subtree cannot remain FRESH", {
 });
 
 test("symlinked source boundaries are surfaced as PARTIAL", async (t) => {
+  if (!(await requireSymlinkCapability(t))) return;
   const project = await temporaryProject();
   const external = await temporaryProject("codegraph-symlink-source-");
   t.after(() => project.cleanup());

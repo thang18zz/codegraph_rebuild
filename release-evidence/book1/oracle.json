@@ -1,0 +1,108 @@
+{
+  "schema_version": 1,
+  "project_identity": {
+    "name": "VinaBookStore",
+    "discovered_from": "book1/book1/book/book/VinaBookStore",
+    "vcs": "none",
+    "source_fingerprint": "eb60c3e50f50a33b13d9ebe1b2889ec23127a3eb1009d5c949cb9ba482ae8d86",
+    "fingerprint_scope": "sorted relative path + NUL + bytes for pom.xml, src/main/resources/application.properties, and Java source excluding target/.codegraph",
+    "java_file_count": 58,
+    "production_java_file_count": 57,
+    "test_java_file_count": 1
+  },
+  "profile": [
+    "MAVEN",
+    "SPRING_BOOT",
+    "SPRING_MVC",
+    "SPRING_DATA",
+    "JPA_HIBERNATE"
+  ],
+  "source_roots": {
+    "production": ["src/main/java"],
+    "test": ["src/test/java"],
+    "resources": ["src/main/resources"]
+  },
+  "required_entities": [
+    { "qualified_name": "vn.fs.VinaBookApplication", "kind": "class", "path": "src/main/java/vn/fs/VinaBookApplication.java", "line": 7 },
+    { "qualified_name": "vn.fs.VinaBookApplication.main(String[])", "kind": "method", "path": "src/main/java/vn/fs/VinaBookApplication.java", "line": 9 },
+    { "qualified_name": "vn.fs.api.UserApi", "kind": "class", "path": "src/main/java/vn/fs/api/UserApi.java", "line": 49 },
+    { "qualified_name": "vn.fs.api.UserApi.registerUser(SignupRequest)", "kind": "method", "path": "src/main/java/vn/fs/api/UserApi.java", "line": 184 },
+    { "qualified_name": "vn.fs.api.UserApi.sendToken(String)", "kind": "method", "path": "src/main/java/vn/fs/api/UserApi.java", "line": 217 },
+    { "qualified_name": "vn.fs.api.UserApi.sendMaiToken(String,String,String)", "kind": "method", "path": "src/main/java/vn/fs/api/UserApi.java", "line": 229 },
+    { "qualified_name": "vn.fs.api.ProductApi", "kind": "class", "path": "src/main/java/vn/fs/api/ProductApi.java", "line": 31 },
+    { "qualified_name": "vn.fs.api.ProductApi.getRated()", "kind": "method", "path": "src/main/java/vn/fs/api/ProductApi.java", "line": 60 },
+    { "qualified_name": "vn.fs.api.ProductApi.suggest(Long,Long)", "kind": "method", "path": "src/main/java/vn/fs/api/ProductApi.java", "line": 65 },
+    { "qualified_name": "vn.fs.api.OrderApi", "kind": "class", "path": "src/main/java/vn/fs/api/OrderApi.java", "line": 39 },
+    { "qualified_name": "vn.fs.api.OrderApi.checkout(String,Cart)", "kind": "method", "path": "src/main/java/vn/fs/api/OrderApi.java", "line": 85 },
+    { "qualified_name": "vn.fs.api.OrderApi.success(Long)", "kind": "method", "path": "src/main/java/vn/fs/api/OrderApi.java", "line": 136 },
+    { "qualified_name": "vn.fs.api.OrderApi.updateProduct(Order)", "kind": "method", "path": "src/main/java/vn/fs/api/OrderApi.java", "line": 148 },
+    { "qualified_name": "vn.fs.api.CartDetailApi", "kind": "class", "path": "src/main/java/vn/fs/api/CartDetailApi.java", "line": 33 },
+    { "qualified_name": "vn.fs.api.CartDetailApi.post(CartDetail)", "kind": "method", "path": "src/main/java/vn/fs/api/CartDetailApi.java", "line": 61 },
+    { "qualified_name": "vn.fs.repository.UserRepository", "kind": "interface", "path": "src/main/java/vn/fs/repository/UserRepository.java", "line": 18 },
+    { "qualified_name": "vn.fs.repository.UserRepository.findByEmail(String)", "kind": "method", "path": "src/main/java/vn/fs/repository/UserRepository.java", "line": 24 },
+    { "qualified_name": "vn.fs.repository.UserRepository.findByToken(String)", "kind": "method", "path": "src/main/java/vn/fs/repository/UserRepository.java", "line": 26 },
+    { "qualified_name": "vn.fs.repository.ProductRepository", "kind": "interface", "path": "src/main/java/vn/fs/repository/ProductRepository.java", "line": 19 },
+    { "qualified_name": "vn.fs.repository.ProductRepository.findProductRated()", "kind": "method", "path": "src/main/java/vn/fs/repository/ProductRepository.java", "line": 39 },
+    { "qualified_name": "vn.fs.repository.ProductRepository.findProductSuggest(Long,Long,Long,Long)", "kind": "method", "path": "src/main/java/vn/fs/repository/ProductRepository.java", "line": 51 },
+    { "qualified_name": "vn.fs.repository.ProductRepository.findByProductIdAndStatusTrue(Long)", "kind": "method", "path": "src/main/java/vn/fs/repository/ProductRepository.java", "line": 31 },
+    { "qualified_name": "vn.fs.repository.CartDetailRepository", "kind": "interface", "path": "src/main/java/vn/fs/repository/CartDetailRepository.java", "line": 18 },
+    { "qualified_name": "vn.fs.repository.CartDetailRepository.findByCart(Cart)", "kind": "method", "path": "src/main/java/vn/fs/repository/CartDetailRepository.java", "line": 20 },
+    { "qualified_name": "vn.fs.service.SendMailService", "kind": "interface", "path": "src/main/java/vn/fs/service/SendMailService.java", "line": 15 },
+    { "qualified_name": "vn.fs.service.SendMailService.queue(String,String,String)", "kind": "method", "path": "src/main/java/vn/fs/service/SendMailService.java", "line": 19 },
+    { "qualified_name": "vn.fs.service.SendMailService.queue(MailInfo)", "kind": "method", "path": "src/main/java/vn/fs/service/SendMailService.java", "line": 21 },
+    { "qualified_name": "vn.fs.service.implement.SendMailServiceImplement", "kind": "class", "path": "src/main/java/vn/fs/service/implement/SendMailServiceImplement.java", "line": 28 },
+    { "qualified_name": "vn.fs.service.implement.SendMailServiceImplement.queue(String,String,String)", "kind": "method", "path": "src/main/java/vn/fs/service/implement/SendMailServiceImplement.java", "line": 63 },
+    { "qualified_name": "vn.fs.common.ERole", "kind": "enum", "path": "src/main/java/vn/fs/common/ERole.java", "line": 9 }
+  ],
+  "required_relations": [
+    { "source": "vn.fs.service.implement.SendMailServiceImplement", "kind": "IMPLEMENTS", "target": "vn.fs.service.SendMailService", "expected_confidence": "HIGH", "path": "src/main/java/vn/fs/service/implement/SendMailServiceImplement.java", "line": 28 },
+    { "source": "vn.fs.service.implement.SendMailServiceImplement.queue(String,String,String)", "kind": "CALLS", "target": "vn.fs.service.implement.SendMailServiceImplement.queue(MailInfo)", "expected_confidence": "HIGH", "path": "src/main/java/vn/fs/service/implement/SendMailServiceImplement.java", "line": 64 },
+    { "source": "vn.fs.api.UserApi.sendToken(String)", "kind": "CALLS", "target": "vn.fs.repository.UserRepository.findByEmail(String)", "expected_confidence": "HIGH", "path": "src/main/java/vn/fs/api/UserApi.java", "line": 222 },
+    { "source": "vn.fs.api.UserApi.sendToken(String)", "kind": "CALLS", "target": "vn.fs.api.UserApi.sendMaiToken(String,String,String)", "expected_confidence": "HIGH", "path": "src/main/java/vn/fs/api/UserApi.java", "line": 224 },
+    { "source": "vn.fs.api.UserApi.sendMaiToken(String,String,String)", "kind": "CALLS", "target": "vn.fs.service.SendMailService.queue(String,String,String)", "expected_confidence": "HIGH", "path": "src/main/java/vn/fs/api/UserApi.java", "line": 232 },
+    { "source": "vn.fs.api.ProductApi.getRated()", "kind": "CALLS", "target": "vn.fs.repository.ProductRepository.findProductRated()", "expected_confidence": "HIGH", "path": "src/main/java/vn/fs/api/ProductApi.java", "line": 61 },
+    { "source": "vn.fs.api.ProductApi.suggest(Long,Long)", "kind": "CALLS", "target": "vn.fs.repository.ProductRepository.findProductSuggest(Long,Long,Long,Long)", "expected_confidence": "HIGH", "path": "src/main/java/vn/fs/api/ProductApi.java", "line": 67 },
+    { "source": "vn.fs.api.OrderApi.checkout(String,Cart)", "kind": "CALLS", "target": "vn.fs.repository.CartDetailRepository.findByCart(Cart)", "expected_confidence": "HIGH", "path": "src/main/java/vn/fs/api/OrderApi.java", "line": 92 },
+    { "source": "vn.fs.api.OrderApi.checkout(String,Cart)", "kind": "CALLS", "target": "vn.fs.repository.UserRepository.findByEmail(String)", "expected_confidence": "HIGH", "path": "src/main/java/vn/fs/api/OrderApi.java", "line": 98 },
+    { "source": "vn.fs.api.OrderApi.success(Long)", "kind": "CALLS", "target": "vn.fs.api.OrderApi.updateProduct(Order)", "expected_confidence": "HIGH", "path": "src/main/java/vn/fs/api/OrderApi.java", "line": 144 },
+    { "source": "vn.fs.api.CartDetailApi.post(CartDetail)", "kind": "CALLS", "target": "vn.fs.repository.ProductRepository.findByProductIdAndStatusTrue(Long)", "expected_confidence": "HIGH", "path": "src/main/java/vn/fs/api/CartDetailApi.java", "line": 67 },
+    { "source": "vn.fs.api.CartDetailApi.post(CartDetail)", "kind": "CALLS", "target": "vn.fs.repository.CartDetailRepository.findByCart(Cart)", "expected_confidence": "HIGH", "path": "src/main/java/vn/fs/api/CartDetailApi.java", "line": 79 },
+    { "source": "vn.fs.api.UserApi.registerUser(SignupRequest)", "kind": "CREATES", "target": "vn.fs.entity.User", "expected_confidence": "LOW", "path": "src/main/java/vn/fs/api/UserApi.java", "line": 196 },
+    { "source": "vn.fs.api.UserApi.registerUser(SignupRequest)", "kind": "CREATES", "target": "vn.fs.entity.AppRole", "expected_confidence": "LOW", "path": "src/main/java/vn/fs/api/UserApi.java", "line": 203 },
+    { "source": "vn.fs.api.UserApi.registerUser(SignupRequest)", "kind": "CREATES", "target": "vn.fs.entity.Cart", "expected_confidence": "LOW", "path": "src/main/java/vn/fs/api/UserApi.java", "line": 207 },
+    { "source": "vn.fs.api.OrderApi.checkout(String,Cart)", "kind": "CREATES", "target": "vn.fs.entity.Order", "expected_confidence": "LOW", "path": "src/main/java/vn/fs/api/OrderApi.java", "line": 97 },
+    { "source": "vn.fs.api.OrderApi.checkout(String,Cart)", "kind": "CREATES", "target": "vn.fs.entity.OrderDetail", "expected_confidence": "LOW", "path": "src/main/java/vn/fs/api/OrderApi.java", "line": 100 }
+  ],
+  "query_cases": [
+    { "id": "book1_exact_user_api", "request": { "task": "inspect UserApi authentication", "focus": "vn.fs.api.UserApi", "budget": 3500 }, "expected_status": "EXACT", "required_initial": ["vn.fs.api.UserApi"], "acceptable": ["vn.fs.repository.UserRepository", "vn.fs.config.JwtUtils"] },
+    { "id": "book1_exact_checkout", "request": { "task": "inspect checkout", "focus": "vn.fs.api.OrderApi.checkout(String,Cart)", "budget": 3500 }, "expected_status": "EXACT", "required_initial": ["vn.fs.api.OrderApi.checkout(String,Cart)"], "acceptable": ["vn.fs.repository.CartDetailRepository", "vn.fs.repository.UserRepository"] },
+    { "id": "book1_exact_products", "request": { "task": "inspect product repository", "focus": "vn.fs.repository.ProductRepository", "budget": 3500 }, "expected_status": "EXACT", "required_initial": ["vn.fs.repository.ProductRepository"], "acceptable": ["vn.fs.api.ProductApi"] },
+    { "id": "book1_exact_mail", "request": { "task": "inspect mail service implementation", "focus": "vn.fs.service.implement.SendMailServiceImplement", "budget": 3500 }, "expected_status": "EXACT", "required_initial": ["vn.fs.service.implement.SendMailServiceImplement"], "acceptable": ["vn.fs.service.SendMailService"] },
+    { "id": "book1_exact_jwt_filter", "request": { "task": "inspect JWT request filter", "focus": "vn.fs.config.AuthTokenFilter", "budget": 3500 }, "expected_status": "EXACT", "required_initial": ["vn.fs.config.AuthTokenFilter"], "acceptable": ["vn.fs.service.implement.UserDetailsServiceImpl", "vn.fs.config.JwtUtils"] },
+    { "id": "book1_flow_checkout", "request": { "task": "checkout cart items create order and update inventory", "budget": 3500 }, "expected_status_any": ["STRONG", "EXACT"], "required_any": ["vn.fs.api.OrderApi.checkout(String,Cart)", "vn.fs.api.OrderApi"], "acceptable": ["vn.fs.repository.CartDetailRepository", "vn.fs.repository.OrderRepository", "vn.fs.repository.ProductRepository"] },
+    { "id": "book1_flow_auth", "request": { "task": "authenticate JWT token and load user details", "budget": 3500 }, "expected_status_any": ["STRONG", "EXACT"], "required_any": ["vn.fs.config.AuthTokenFilter", "vn.fs.api.UserApi.authenticateUser(LoginRequest)"], "acceptable": ["vn.fs.config.JwtUtils", "vn.fs.service.implement.UserDetailsServiceImpl"] },
+    { "id": "book1_flow_products", "request": { "task": "rated product catalogue and related suggestions", "budget": 3500 }, "expected_status_any": ["STRONG", "EXACT"], "required_any": ["vn.fs.api.ProductApi", "vn.fs.repository.ProductRepository"], "acceptable": ["vn.fs.api.ProductApi.getRated()", "vn.fs.repository.ProductRepository.findProductRated()"] },
+    { "id": "book1_no_match", "request": { "task": "quantum GPU reservation compiler", "budget": 3000 }, "expected_status": "NO_MATCH", "expected_entities_empty": true, "required_safety": ["SOURCE_INSPECTION_REQUIRED"] },
+    { "id": "book1_impact_mail", "request": { "task": "What breaks if SendMailService queue signature changes?", "focus": "vn.fs.service.SendMailService.queue(String,String,String)", "budget": 3500 }, "expected_status": "EXACT", "required_initial": ["vn.fs.service.SendMailService.queue(String,String,String)"], "required_safety": ["IMPACT_INCOMPLETE", "SOURCE_INSPECTION_REQUIRED"] }
+  ],
+  "ambiguity_cases": [
+    { "id": "queue_overloads", "symbols": ["vn.fs.service.SendMailService.queue(String,String,String)", "vn.fs.service.SendMailService.queue(MailInfo)"], "expectation": "distinct stable IDs and no arbitrary overload target" },
+    { "id": "configure_overloads", "symbols": ["vn.fs.config.WebSecurityConfig.configure(AuthenticationManagerBuilder)", "vn.fs.config.WebSecurityConfig.configure(HttpSecurity)"], "expectation": "distinct stable IDs" }
+  ],
+  "known_dynamic_or_unsupported_boundaries": [
+    "Spring @Autowired field injection and runtime bean dispatch",
+    "Spring MVC annotation routing",
+    "Spring Data generated JpaRepository methods",
+    "native SQL strings in @Query annotations",
+    "security filter-chain runtime composition",
+    "lambda and framework callback dispatch"
+  ],
+  "source_evidence": [
+    { "flow": "application entry", "path": "src/main/java/vn/fs/VinaBookApplication.java", "lines": "6-10", "reason": "@SpringBootApplication main calls SpringApplication.run" },
+    { "flow": "authentication", "path": "src/main/java/vn/fs/api/UserApi.java", "lines": "164-211", "reason": "signin/signup coordinate authentication, JWT, repositories, and cart creation" },
+    { "flow": "checkout", "path": "src/main/java/vn/fs/api/OrderApi.java", "lines": "85-110", "reason": "cart details become order/order details and trigger email" },
+    { "flow": "inventory update", "path": "src/main/java/vn/fs/api/OrderApi.java", "lines": "136-159", "reason": "successful order updates product quantity and sold count" },
+    { "flow": "product discovery", "path": "src/main/java/vn/fs/api/ProductApi.java", "lines": "59-68", "reason": "controller delegates rated and suggestion queries to ProductRepository" },
+    { "flow": "mail queue", "path": "src/main/java/vn/fs/service/implement/SendMailServiceImplement.java", "lines": "28-81", "reason": "implementation overloads queue and drains mail through a scheduled callback" }
+  ]
+}

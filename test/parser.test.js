@@ -104,6 +104,218 @@ func Start(value int) string { return "" }
   assert.ok(go.entities.some((entity) => entity.qualified_name === "worker.Service.Run"));
 });
 
+test("Java typed receivers and local overloads resolve without guessing", async (t) => {
+  const project = await temporaryProject();
+  t.after(() => project.cleanup());
+  const types = await parse(project, "src/demo/Types.java", "java", `
+package demo;
+enum Role { USER }
+class Item {}
+class Mail {}
+class Order {}
+`);
+  const repository = await parse(project, "src/demo/Repo.java", "java", `
+package demo;
+interface Repo { Item find(String id); }
+`);
+  const service = await parse(project, "src/demo/Service.java", "java", `
+package demo;
+class Service {
+  private Repo repo;
+  Item lookup(String id) { return repo.find(id); }
+  String value() { return "id"; }
+  Item lookupNested() { return repo.find(value()); }
+  void queue(Mail mail) {}
+  void queue(String body) { queue(new Mail()); }
+  void update(Order order) {}
+  void success() { Order order = new Order(); update(order); }
+}
+`);
+  const graph = resolveGraph([types, repository, service]);
+  assert.ok(graph.entities.some((entity) => entity.kind === "enum"
+    && entity.qualified_name === "demo.Role"));
+
+  const highCalls = graph.relations.filter((relation) => relation.kind === "CALLS"
+    && relation.confidence === "HIGH");
+  const lookup = graph.entities.find((entity) => entity.qualified_name === "demo.Service.lookup(String)");
+  const nested = graph.entities.find((entity) => entity.qualified_name === "demo.Service.lookupNested()");
+  const stringQueue = graph.entities.find((entity) => entity.qualified_name === "demo.Service.queue(String)");
+  const success = graph.entities.find((entity) => entity.qualified_name === "demo.Service.success()");
+  assert.match(
+    highCalls.find((relation) => relation.src_entity_id === lookup.stable_id)?.dst_entity_id ?? "",
+    /demo\.Repo\.find\(String\):method$/u,
+  );
+  assert.match(
+    highCalls.find((relation) => relation.src_entity_id === nested.stable_id
+      && relation.dst_entity_id.includes("Repo.find"))?.dst_entity_id ?? "",
+    /demo\.Repo\.find\(String\):method$/u,
+  );
+  assert.match(
+    highCalls.find((relation) => relation.src_entity_id === stringQueue.stable_id)?.dst_entity_id ?? "",
+    /demo\.Service\.queue\(Mail\):method$/u,
+  );
+  assert.match(
+    highCalls.find((relation) => relation.src_entity_id === success.stable_id)?.dst_entity_id ?? "",
+    /demo\.Service\.update\(Order\):method$/u,
+  );
+});
+
+test("C# declarations, ASP.NET routes, typed dependencies, and member calls are explicit", async (t) => {
+  const project = await temporaryProject();
+  t.after(() => project.cleanup());
+  const contract = await parse(project, "Services/IAuthService.cs", "csharp", `
+namespace Demo.Services;
+public interface IAuthService {
+  Task<Result> LoginAsync(LoginDto dto);
+  Task<Result> LoginAsync(string token);
+}
+`);
+  const implementation = await parse(project, "Services/AuthService.cs", "csharp", `
+namespace Demo.Services;
+public class AuthService : IAuthService {
+  public Task<Result> LoginAsync(LoginDto dto) => throw new NotImplementedException();
+  public Task<Result> LoginAsync(string token) => throw new NotImplementedException();
+}
+`);
+  const controller = await parse(project, "Controllers/AuthController.cs", "csharp", `
+using Demo.Services;
+namespace Demo.Controllers;
+[ApiController]
+[Route("api/auth")]
+public class AuthController : ControllerBase {
+  private readonly IAuthService _authService;
+  public AuthController(IAuthService authService) => _authService = authService;
+
+  [HttpPost("login")]
+  [AllowAnonymous]
+  public async Task<Result> Login(LoginDto dto) {
+    if (dto != null) return await _authService.LoginAsync(dto);
+    throw new ArgumentException();
+  }
+}
+`);
+  const graph = resolveGraph([contract, implementation, controller]);
+  const overloads = graph.entities.filter((entity) => entity.name === "LoginAsync"
+    && entity.qualified_name.includes("IAuthService"));
+  assert.equal(overloads.length, 2);
+  assert.equal(new Set(overloads.map((entity) => entity.stable_id)).size, 2);
+  const authService = graph.entities.find((entity) => entity.name === "AuthService");
+  const authController = graph.entities.find((entity) => entity.name === "AuthController");
+  const login = graph.entities.find((entity) => entity.name === "Login");
+  assert.ok(authService.semantic_tags.includes("public"));
+  assert.ok(login.semantic_tags.includes("entry_point:http"));
+  assert.ok(login.semantic_tags.includes("http:post"));
+  assert.ok(login.semantic_tags.includes("route:http:POST /api/auth/login"));
+  assert.ok(login.semantic_tags.includes("auth:anonymous"));
+  assert.deepEqual(login.outputs, [{ type: "Task<Result>", condition: null }]);
+  assert.ok(login.effects.includes("RAISE_ERROR"));
+  const implementationRelation = graph.relations.find((relation) => (
+    relation.src_entity_id === authService.stable_id && relation.kind === "IMPLEMENTS"
+  ));
+  assert.equal(implementationRelation.confidence, "HIGH");
+  assert.match(implementationRelation.dst_entity_id, /IAuthService:interface$/u);
+  const dependency = graph.relations.find((relation) => (
+    relation.src_entity_id === authController.stable_id && relation.kind === "DEPENDS_ON"
+  ));
+  assert.equal(dependency.confidence, "HIGH");
+  assert.match(dependency.dst_entity_id, /IAuthService:interface$/u);
+  const call = graph.relations.find((relation) => (
+    relation.src_entity_id === login.stable_id && relation.kind === "CALLS"
+  ));
+  assert.equal(call.confidence, "HIGH");
+  assert.match(call.dst_entity_id, /IAuthService\.LoginAsync\(LoginDto\):method$/u);
+  assert.equal(call.condition.expression, "dto != null");
+});
+
+test("C# record, struct, enum, and using aliases retain typed identities", async (t) => {
+  const project = await temporaryProject();
+  t.after(() => project.cleanup());
+  const models = await parse(project, "Models/Types.cs", "csharp", `
+namespace Demo.Models {
+  public record LoginDto(string Email);
+  public struct Token { public string Value; }
+  public enum Role { User, Admin }
+}
+`);
+  const contract = await parse(project, "Services/IAuthService.cs", "csharp", `
+namespace Demo.Services;
+public interface IAuthService { void Login(); }
+`);
+  const controller = await parse(project, "Controllers/AliasController.cs", "csharp", `
+using AuthContract = Demo.Services.IAuthService;
+namespace Demo.Controllers;
+public class AliasController {
+  private readonly AuthContract _auth;
+  public AliasController(AuthContract auth) { _auth = auth; }
+}
+`);
+  const graph = resolveGraph([models, contract, controller]);
+  assert.deepEqual(
+    graph.entities.filter((entity) => ["record", "struct", "enum"].includes(entity.kind))
+      .map((entity) => `${entity.kind}:${entity.qualified_name}`).sort(),
+    ["enum:Demo.Models.Role", "record:Demo.Models.LoginDto", "struct:Demo.Models.Token"],
+  );
+  const aliasController = graph.entities.find((entity) => entity.name === "AliasController");
+  const dependency = graph.relations.find((relation) => relation.src_entity_id === aliasController.stable_id
+    && relation.kind === "DEPENDS_ON");
+  assert.equal(dependency.confidence, "HIGH");
+  assert.match(dependency.dst_entity_id, /IAuthService:interface$/u);
+});
+
+test("C# DI registrations, reflection, and literal database boundaries stay conservative", async (t) => {
+  const project = await temporaryProject();
+  t.after(() => project.cleanup());
+  const program = await parse(project, "Program.cs", "csharp", `
+using Demo.Services;
+builder.Services.AddScoped<IAuthService, AuthService>();
+builder.Services.AddScoped<IAuthService, AlternateAuthService>();
+builder.Services.AddSingleton<AuthService>();
+var property = type.GetProperty("Id", System.Reflection.BindingFlags.Public);
+`);
+  const repository = await parse(project, "Repositories/UserRepository.cs", "csharp", `
+namespace Demo.Repositories;
+public class UserRepository {
+  public async Task<User> FindAsync(int id) {
+    return await conn.QueryFirstOrDefaultAsync<User>(
+      "SELECT * FROM sp_get_user_by_id(@Id)", new { Id = id });
+  }
+}
+`);
+  const graph = resolveGraph([program, repository]);
+  const programModule = graph.entities.find((entity) => entity.file_path === "Program.cs"
+    && entity.kind === "module");
+  assert.ok(programModule.semantic_tags.includes("di:lifetime:scoped:IAuthService->AuthService"));
+  assert.ok(programModule.semantic_tags.includes("di:lifetime:scoped:IAuthService->AlternateAuthService"));
+  assert.ok(programModule.semantic_tags.includes("di:lifetime:singleton:AuthService->AuthService"));
+  assert.ok(programModule.risk_flags.includes(RISK.DEPENDENCY_INJECTION));
+  assert.ok(programModule.risk_flags.includes(RISK.REFLECTION));
+  assert.ok(graph.relations.some((relation) => relation.kind === "CONFIGURES"
+    && relation.unresolved_target === "scoped:IAuthService->AuthService"
+    && relation.risk_flags.includes(RISK.DEPENDENCY_INJECTION)));
+  const ambiguousRegistrations = graph.relations.filter((relation) => relation.kind === "CONFIGURES"
+    && relation.unresolved_target.startsWith("scoped:IAuthService->"));
+  assert.equal(ambiguousRegistrations.length, 2);
+  assert.ok(ambiguousRegistrations.every((relation) => relation.confidence !== "HIGH"
+    && relation.dst_entity_id === null));
+  const find = graph.entities.find((entity) => entity.name === "FindAsync");
+  assert.ok(find.semantic_tags.includes("database:sp_get_user_by_id"));
+  assert.ok(find.effects.includes("database_access"));
+  assert.ok(find.risk_flags.includes(RISK.CROSS_LANGUAGE_BOUNDARY));
+  assert.ok(graph.relations.some((relation) => relation.kind === "USES"
+    && relation.unresolved_target === "sp_get_user_by_id"
+    && relation.risk_flags.includes(RISK.CROSS_LANGUAGE_BOUNDARY)));
+  assert.equal(graph.health.impact_completeness, "INCOMPLETE");
+});
+
+test("C# syntax errors fail closed", async (t) => {
+  const project = await temporaryProject();
+  t.after(() => project.cleanup());
+  const parsed = await parse(project, "Broken.cs", "csharp", "public class Broken {");
+  assert.equal(parsed.parse_status, "FAILED");
+  assert.deepEqual(parsed.entities, []);
+  assert.ok(parsed.risk_flags.includes(RISK.PARTIAL_PARSE));
+});
+
 test("JavaScript aliases resolve and dynamic constructs remain uncertain", async (t) => {
   const project = await temporaryProject();
   t.after(() => project.cleanup());

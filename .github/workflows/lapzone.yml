@@ -1,0 +1,54 @@
+name: Pinned LapZoneAPI acceptance
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 3 * * 1"
+
+permissions:
+  contents: read
+
+env:
+  LAPZONE_COMMIT_SHA: c8032dd253964a0884491fb18f3020b3850e6c00
+
+jobs:
+  lapzone:
+    name: ${{ matrix.os }} / x64
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            executable: dist/codegraph
+          - os: windows-latest
+            executable: dist/codegraph.exe
+    steps:
+      - uses: actions/checkout@v7
+      - name: Assert exact workflow SHA
+        run: node -e "const {execFileSync}=require('node:child_process'); const actual=execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim(); if(actual!==process.env.GITHUB_SHA) throw new Error(actual+' != '+process.env.GITHUB_SHA)"
+      - uses: actions/checkout@v7
+        with:
+          repository: ihPnaVeL/LapZoneAPI
+          ref: ${{ env.LAPZONE_COMMIT_SHA }}
+          path: lapzone
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+      - run: npm run verify
+      - run: npm run benchmark
+      - name: Run pinned source and SEA acceptance
+        run: npm run benchmark:lapzone
+        env:
+          LAPZONE_REPO: ${{ github.workspace }}/lapzone
+          CODEGRAPH_BIN: ${{ github.workspace }}/${{ matrix.executable }}
+      - uses: actions/upload-artifact@v7
+        with:
+          name: lapzone-${{ runner.os }}-x64
+          path: benchmark/results/lapzone/${{ env.LAPZONE_COMMIT_SHA }}/
+          if-no-files-found: error

@@ -5,7 +5,7 @@ import { join, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 import { artifactPaths, initializeProject } from "../src/sync.js";
-import { temporaryProject } from "./helpers.js";
+import { requireSymlinkCapability, temporaryProject } from "./helpers.js";
 
 const launcher = resolve("bin/codegraph.js");
 const initialize = (id = 1) => ({
@@ -77,6 +77,38 @@ test("stdio MCP negotiates a fixed protocol and serves one bounded semantic tool
   assert.equal(responses[3].result.structuredContent.graph_status, "FRESH");
   assert.equal(responses[3].result.content.length, 1);
   assert.ok(framedBytes(stdout.trim().split("\n").at(-1)) <= 2000);
+});
+
+test("bounded MCP keeps a direct graph expansion before dropping entities", async (t) => {
+  const project = await temporaryProject();
+  t.after(() => project.cleanup());
+  await project.write("AuthController.cs", `namespace Demo;
+public interface IAuthService {}
+public class AuthController
+{
+    private readonly IAuthService _authService;
+    public AuthController(IAuthService authService) { _authService = authService; }
+}
+`);
+  await initializeProject(project.root);
+  const { stdout } = await runMcp(project.root, [
+    initialize(),
+    {
+      jsonrpc: "2.0",
+      id: 2,
+      method: "tools/call",
+      params: {
+        name: "semantic_explore",
+        arguments: { task: "Trace AuthController dependencies", focus: "AuthController", budget: 3000 },
+      },
+    },
+  ]);
+  const line = stdout.trim().split("\n").at(-1);
+  const response = JSON.parse(line);
+  assert.ok(framedBytes(line) <= 3000);
+  assert.ok(response.result.structuredContent.entities.some((entity) => (
+    entity.qualified_name === "Demo.IAuthService" && entity.selection_origin === "GRAPH_EXPANSION"
+  )));
 });
 
 test("tiny-budget MCP stale responses retain mandatory safety provenance", async (t) => {
@@ -328,6 +360,7 @@ test("compact MCP provenance uses exact paths or explicit hashed truncation", as
 });
 
 test("compact MCP preserves skipped-boundary path evidence without file provenance", async (t) => {
+  if (!(await requireSymlinkCapability(t))) return;
   const project = await temporaryProject();
   t.after(() => project.cleanup());
   await symlink("missing-target.py", join(project.root, "plugin.py"));

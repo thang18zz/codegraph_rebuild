@@ -33,6 +33,24 @@ test("relocated standalone runs lifecycle and semantic MCP without project runti
   t.after(() => project.cleanup());
   t.after(() => toolProject.cleanup());
   await project.write("src/app.py", "def main():\n    return 1\n");
+  await project.write("src/AuthController.cs", `
+namespace Portable.Api;
+[ApiController]
+[Route("api/auth")]
+public class AuthController {
+  [HttpPost("login")]
+  public void Login() {}
+}
+`);
+  await project.write("src/OrderService.java", `
+package portable.shop;
+enum OrderState { OPEN, PAID }
+class OrderRepository { void save(String id) {} }
+public class OrderService {
+  private OrderRepository repository;
+  public void checkout(String id) { repository.save(id); }
+}
+`);
   const before = await sourceHashes(project.root);
   const moved = join(toolProject.root, process.platform === "win32" ? "renamed-codegraph.exe" : "renamed-codegraph");
   await copyFile(process.env.CODEGRAPH_BIN, moved);
@@ -80,6 +98,24 @@ test("relocated standalone runs lifecycle and semantic MCP without project runti
         arguments: { task: "inspect main", focus: "main", budget: 3000 },
       },
     },
+    {
+      jsonrpc: "2.0",
+      id: 4,
+      method: "tools/call",
+      params: {
+        name: "semantic_explore",
+        arguments: { task: "inspect AuthController", focus: "AuthController", budget: 3000 },
+      },
+    },
+    {
+      jsonrpc: "2.0",
+      id: 5,
+      method: "tools/call",
+      params: {
+        name: "semantic_explore",
+        arguments: { task: "inspect Java OrderService", focus: "portable.shop.OrderService", budget: 3000 },
+      },
+    },
   ];
   const mcp = await execute(
     moved,
@@ -98,6 +134,14 @@ test("relocated standalone runs lifecycle and semantic MCP without project runti
   assert.ok(explored.entities.some((entity) => entity.name === "main"));
   assert.ok(Array.isArray(explored.safety_states));
   assert.ok(Buffer.byteLength(`${mcpLines[2]}\n`, "utf8") <= 3000);
+  const csharpExplored = mcpResponses[3].result.structuredContent;
+  assert.equal(csharpExplored.retrieval_status, "EXACT");
+  assert.ok(csharpExplored.entities.some((entity) => entity.name === "AuthController"));
+  assert.ok(Buffer.byteLength(`${mcpLines[3]}\n`, "utf8") <= 3000);
+  const javaExplored = mcpResponses[4].result.structuredContent;
+  assert.equal(javaExplored.retrieval_status, "EXACT");
+  assert.ok(javaExplored.entities.some((entity) => entity.name === "OrderService"));
+  assert.ok(Buffer.byteLength(`${mcpLines[4]}\n`, "utf8") <= 3000);
   assert.deepEqual(await sourceHashes(project.root), beforeMcp);
   const integration = await execute(moved, ["integrate", "test-client"], project.root);
   assert.equal(integration.code, 0, integration.stderr);

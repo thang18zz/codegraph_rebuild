@@ -55,7 +55,7 @@ Responses include graph revision/status, retrieval status, source locations, con
 
 - Local and offline: no network requests, telemetry, accounts, APIs, or cloud services.
 - Parse-only: repository modules, build scripts, hooks, and dependencies are never executed.
-- Supported V1 parsers: Python, JavaScript, TypeScript/TSX, Java, and Go.
+- Supported V1 parsers: Python, JavaScript, TypeScript/TSX, Java, Go, and C#.
 - Storage: bundled SQLite with WAL and FTS5.
 - Freshness: content-hash reconciliation runs before graph-backed MCP responses; the watcher is only a latency optimization.
 - Failure behavior: invalid or unreadable changed source retains last-known-good semantics and is marked `PARTIAL`/stale.
@@ -63,6 +63,8 @@ Responses include graph revision/status, retrieval status, source locations, con
 
 ## Verification
 
-`npm test` runs source-level fixtures and the deterministic retrieval corpus. `npm run verify` additionally builds, relocates, and exercises the host-platform standalone executable with no PATH or project runtimes available. `npm run benchmark` writes current machine-readable and human-readable results to `benchmark/results/latest.json` and `benchmark/results/latest.md`.
+`npm test` runs the repository's source-level fixtures and deterministic retrieval corpus. `npm run verify` additionally builds, relocates, and exercises the host-platform standalone executable with no PATH or project runtimes available, including compact C# and Java fixtures. `npm run benchmark` writes current machine-readable and human-readable results to `benchmark/results/latest.json` and `benchmark/results/latest.md`. A pinned disposable LapZoneAPI clone can be checked with `LAPZONE_REPO=/path/to/LapZoneAPI npm run benchmark:lapzone`; setting `CODEGRAPH_BIN` adds the real-repository SEA/MCP gate. The independently inspected local Java project can be checked without executing Maven or application code using `BOOK1_ROOT=/path/to/VinaBookStore CODEGRAPH_BIN=/path/to/codegraph npm run benchmark:book1`.
+
+After both real-repository gates, `npm run evidence:release` writes ignored machine-readable provenance, quality/performance metrics, the cross-repository comparison, and a release report under `release-evidence/`. Generated benchmark/evidence results are CI or release artifacts; frozen oracles and runners remain versioned.
 
 The benchmark oracle is authored independently from CodeGraph output and covers exact/ambiguous symbols, no-match safety, FTS wording, generic queries, entry-point traps, generated noise, cross-module flow, unsupported impact, and broad routing. GitHub Actions runs the source suite, host SEA build, relocated executable verification, and benchmark on native Windows x64 and Linux x64. Agent token-saving claims require a separately configured agent benchmark with actual usage metadata; UTF-8 budget units alone are not evidence of token savings.

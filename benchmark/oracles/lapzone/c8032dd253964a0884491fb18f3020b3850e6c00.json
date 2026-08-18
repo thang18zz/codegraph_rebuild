@@ -1,0 +1,127 @@
+{
+  "version": 1,
+  "lapzone_commit_sha": "c8032dd253964a0884491fb18f3020b3850e6c00",
+  "source_repository": "https://github.com/ihPnaVeL/LapZoneAPI",
+  "pre_csharp": {
+    "supported_file_coverage": 0.17777777777777778,
+    "unsupported_file_count": 74,
+    "backend_required_entity_recall": 0,
+    "required_risks": ["UNSUPPORTED_SEMANTICS"],
+    "impact_completeness": "INCOMPLETE"
+  },
+  "required_entities": [
+    { "qualified_name": "LapZoneApi.Controllers.AuthController", "path": "Controllers/AuthController.cs" },
+    { "qualified_name": "LapZoneApi.Controllers.AuthController.Register(RegisterDto)", "path": "Controllers/AuthController.cs" },
+    { "qualified_name": "LapZoneApi.Controllers.AuthController.Login(LoginDto)", "path": "Controllers/AuthController.cs" },
+    { "qualified_name": "LapZoneApi.Services.Interfaces.IAuthService", "path": "Services/Interfaces/IAuthService.cs" },
+    { "qualified_name": "LapZoneApi.Services.Implementations.AuthService", "path": "Services/Implementations/AuthService.cs" },
+    { "qualified_name": "LapZoneApi.Services.Implementations.AuthService.LoginAsync(LoginDto)", "path": "Services/Implementations/AuthService.cs" },
+    { "qualified_name": "LapZoneApi.Repositories.Interfaces.IUserRepository", "path": "Repositories/Interfaces/IUserRepository.cs" },
+    { "qualified_name": "LapZoneApi.Security.JwtTokenService", "path": "Security/JwtTokenService.cs" },
+    { "qualified_name": "LapZoneApi.Security.JwtTokenService.GenerateToken(User)", "path": "Security/JwtTokenService.cs" },
+    { "qualified_name": "LapZoneApi.Controllers.CheckoutController", "path": "Controllers/CheckoutController.cs" },
+    { "qualified_name": "LapZoneApi.Controllers.CheckoutController.Process(CheckoutDto)", "path": "Controllers/CheckoutController.cs" },
+    { "qualified_name": "LapZoneApi.Services.Interfaces.ICheckoutService", "path": "Services/Interfaces/ICheckoutService.cs" },
+    { "qualified_name": "LapZoneApi.Services.Implementations.CheckoutService", "path": "Services/Implementations/CheckoutService.cs" },
+    { "qualified_name": "LapZoneApi.Services.Implementations.CheckoutService.ProcessAsync(CheckoutDto,int?)", "path": "Services/Implementations/CheckoutService.cs" },
+    { "qualified_name": "LapZoneApi.Repositories.Interfaces.IOrderRepository", "path": "Repositories/Interfaces/IOrderRepository.cs" },
+    { "qualified_name": "LapZoneApi.Repositories.Interfaces.IProductRepository", "path": "Repositories/Interfaces/IProductRepository.cs" },
+    { "qualified_name": "LapZoneApi.Repositories.Interfaces.ICartRepository", "path": "Repositories/Interfaces/ICartRepository.cs" },
+    { "qualified_name": "LapZoneApi.Controllers.ProductController", "path": "Controllers/ProductController.cs" },
+    { "qualified_name": "LapZoneApi.Services.Interfaces.IProductService", "path": "Services/Interfaces/IProductService.cs" },
+    { "qualified_name": "LapZoneApi.Services.Implementations.ProductService", "path": "Services/Implementations/ProductService.cs" },
+    { "qualified_name": "LapZoneApi.Repositories.Implementations.ProductRepository", "path": "Repositories/Implementations/ProductRepository.cs" }
+  ],
+  "required_relations": [
+    { "source": "LapZoneApi.Controllers.AuthController", "kind": "DEPENDS_ON", "target": "LapZoneApi.Services.Interfaces.IAuthService", "confidence": "HIGH" },
+    { "source": "LapZoneApi.Services.Implementations.AuthService", "kind": "IMPLEMENTS", "target": "LapZoneApi.Services.Interfaces.IAuthService", "confidence": "HIGH" },
+    { "source": "LapZoneApi.Services.Implementations.AuthService", "kind": "DEPENDS_ON", "target": "LapZoneApi.Repositories.Interfaces.IUserRepository", "confidence": "HIGH" },
+    { "source": "LapZoneApi.Services.Implementations.AuthService", "kind": "DEPENDS_ON", "target": "LapZoneApi.Security.JwtTokenService", "confidence": "HIGH" },
+    { "source": "LapZoneApi.Controllers.AuthController.Login(LoginDto)", "kind": "CALLS", "target": "LapZoneApi.Services.Interfaces.IAuthService.LoginAsync(LoginDto)", "confidence": "HIGH" },
+    { "source": "LapZoneApi.Services.Implementations.AuthService.LoginAsync(LoginDto)", "kind": "CALLS", "target": "LapZoneApi.Repositories.Interfaces.IUserRepository.GetByEmailOrPhoneAsync(string)", "confidence": "HIGH" },
+    { "source": "LapZoneApi.Services.Implementations.AuthService.LoginAsync(LoginDto)", "kind": "CALLS", "target": "LapZoneApi.Security.JwtTokenService.GenerateToken(User)", "confidence": "HIGH" },
+    { "source": "LapZoneApi.Controllers.CheckoutController", "kind": "DEPENDS_ON", "target": "LapZoneApi.Services.Interfaces.ICheckoutService", "confidence": "HIGH" },
+    { "source": "LapZoneApi.Services.Implementations.CheckoutService", "kind": "IMPLEMENTS", "target": "LapZoneApi.Services.Interfaces.ICheckoutService", "confidence": "HIGH" },
+    { "source": "LapZoneApi.Services.Implementations.CheckoutService", "kind": "DEPENDS_ON", "target": "LapZoneApi.Repositories.Interfaces.IOrderRepository", "confidence": "HIGH" },
+    { "source": "LapZoneApi.Services.Implementations.CheckoutService", "kind": "DEPENDS_ON", "target": "LapZoneApi.Repositories.Interfaces.IProductRepository", "confidence": "HIGH" },
+    { "source": "LapZoneApi.Services.Implementations.CheckoutService", "kind": "DEPENDS_ON", "target": "LapZoneApi.Repositories.Interfaces.ICartRepository", "confidence": "HIGH" },
+    { "source": "LapZoneApi.Controllers.CheckoutController.Process(CheckoutDto)", "kind": "CALLS", "target": "LapZoneApi.Services.Interfaces.ICheckoutService.ProcessAsync(CheckoutDto,int?)", "confidence": "HIGH" },
+    { "source": "LapZoneApi.Controllers.ProductController", "kind": "DEPENDS_ON", "target": "LapZoneApi.Services.Interfaces.IProductService", "confidence": "HIGH" },
+    { "source": "LapZoneApi.Services.Implementations.ProductService", "kind": "IMPLEMENTS", "target": "LapZoneApi.Services.Interfaces.IProductService", "confidence": "HIGH" },
+    { "source": "LapZoneApi.Services.Implementations.ProductService", "kind": "DEPENDS_ON", "target": "LapZoneApi.Repositories.Interfaces.IProductRepository", "confidence": "HIGH" },
+    { "source": "LapZoneApi.Repositories.Implementations.ProductRepository", "kind": "IMPLEMENTS", "target": "LapZoneApi.Repositories.Interfaces.IProductRepository", "confidence": "HIGH" }
+  ],
+  "required_tags": [
+    { "entity": "LapZoneApi.Controllers.AuthController.Login(LoginDto)", "tags": ["entry_point:http", "http:post", "route:http:POST /api/auth/login"] },
+    { "entity": "LapZoneApi.Controllers.AuthController.Register(RegisterDto)", "tags": ["entry_point:http", "http:post", "route:http:POST /api/auth/register"] },
+    { "entity": "LapZoneApi.Controllers.CheckoutController.Process(CheckoutDto)", "tags": ["entry_point:http", "http:post", "route:http:POST /api/checkout/process", "auth:anonymous"] }
+  ],
+  "required_conditions": [
+    { "target": "LapZoneApi.Repositories.Interfaces.ICartRepository.GetItemsAsync(int)", "contains": "dto.SelectedCartItemIds is { Count: > 0 }" },
+    { "target": "LapZoneApi.Repositories.Interfaces.IProductRepository.GetByIdAsync(int)", "contains": "dto.BuyNowProductId != null" },
+    { "target": "LapZoneApi.Repositories.Interfaces.IOrderRepository.DeleteCartItemsAsync(int[])", "contains": "dto.SelectedCartItemIds is { Count: > 0 }" }
+  ],
+  "di_registrations": [
+    "scoped:IAuthService->AuthService",
+    "scoped:ICartRepository->CartRepository",
+    "scoped:ICartService->CartService",
+    "scoped:ICategoryRepository->CategoryRepository",
+    "scoped:ICategoryService->CategoryService",
+    "scoped:ICheckoutService->CheckoutService",
+    "scoped:IOrderRepository->OrderRepository",
+    "scoped:IOrderService->OrderService",
+    "scoped:IProductRepository->ProductRepository",
+    "scoped:IProductService->ProductService",
+    "scoped:IUserRepository->UserRepository",
+    "scoped:IUserService->UserService",
+    "singleton:JwtTokenService->JwtTokenService"
+  ],
+  "database_symbols": [
+    "sp_get_product_by_id",
+    "sp_get_related_products",
+    "sp_search_products",
+    "sp_insert_product",
+    "sp_update_product",
+    "sp_upsert_product_detail",
+    "sp_get_user_by_email_or_phone",
+    "sp_check_user_exists",
+    "sp_register_user"
+  ],
+  "queries": [
+    {
+      "id": "auth_controller",
+      "request": { "task": "Trace backend AuthController login", "focus": "AuthController", "budget": 3000 },
+      "expected_status": "EXACT",
+      "required_initial": ["LapZoneApi.Controllers.AuthController"],
+      "required_returned_any": ["LapZoneApi.Services.Interfaces.IAuthService"]
+    },
+    {
+      "id": "checkout_service",
+      "request": { "task": "process checkout cart order", "focus": "CheckoutService", "budget": 3000 },
+      "expected_status": "EXACT",
+      "required_initial": ["LapZoneApi.Services.Implementations.CheckoutService"],
+      "required_returned_any": ["LapZoneApi.Repositories.Interfaces.ICartRepository", "LapZoneApi.Repositories.Interfaces.IOrderRepository", "LapZoneApi.Repositories.Interfaces.IProductRepository"]
+    },
+    {
+      "id": "product_repository",
+      "request": { "task": "ProductRepository stored function", "focus": "ProductRepository", "budget": 3000 },
+      "expected_status": "EXACT",
+      "required_initial": ["LapZoneApi.Repositories.Implementations.ProductRepository"],
+      "required_returned_any": ["LapZoneApi.Repositories.Interfaces.IProductRepository"]
+    },
+    {
+      "id": "sql_impact",
+      "request": { "task": "What breaks if sp_get_product_by_id changes?", "focus": "sp_get_product_by_id", "budget": 3000 },
+      "expected_status": "STRONG",
+      "required_initial": ["LapZoneApi.Repositories.Implementations.ProductRepository.GetByIdAsync(int)"],
+      "required_safety": ["IMPACT_INCOMPLETE", "SOURCE_INSPECTION_REQUIRED"]
+    },
+    {
+      "id": "real_no_match",
+      "request": { "task": "quantum GPU reservation compiler", "budget": 3000 },
+      "expected_status": "NO_MATCH",
+      "expected_entities_empty": true,
+      "required_safety": ["SOURCE_INSPECTION_REQUIRED"]
+    }
+  ]
+}

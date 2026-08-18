@@ -158,6 +158,7 @@ function semanticImports(imports) {
         condition: binding.condition?.expression ?? null,
         type_only: Boolean(binding.type_only),
         wildcard: Boolean(binding.wildcard),
+        namespace: Boolean(binding.namespace),
       }))];
     }));
 }

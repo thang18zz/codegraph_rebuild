@@ -9,9 +9,12 @@
   },
   "scripts": {
     "benchmark": "node benchmark/runner/run.js",
+    "benchmark:book1": "node benchmark/runner/run-book1.js",
+    "benchmark:lapzone": "node benchmark/runner/run-lapzone.js",
+    "evidence:release": "node scripts/release-evidence.js",
     "build": "node scripts/build.js",
-    "check": "node --check bin/codegraph.js && node --test",
-    "test": "node --test",
+    "check": "node --check bin/codegraph.js && node --test \"test/**/*.test.js\"",
+    "test": "node --test \"test/**/*.test.js\"",
     "verify": "node scripts/verify.js",
     "start": "node bin/codegraph.js"
   },

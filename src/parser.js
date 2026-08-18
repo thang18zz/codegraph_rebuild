@@ -26,6 +26,7 @@ const LANGUAGE_ASSET = Object.freeze({
   tsx: "tree-sitter-tsx.wasm",
   java: "tree-sitter-java.wasm",
   go: "tree-sitter-go.wasm",
+  csharp: "tree-sitter-c-sharp.wasm",
 });
 
 let initialization;
@@ -93,7 +94,12 @@ function parameterType(node) {
 }
 
 function parameterDefault(node) {
-  const value = node.childForFieldName("value") ?? node.childForFieldName("default");
+  const defaultNode = node.childForFieldName("default")
+    ?? node.namedChildren.find((child) => child.type === "equals_value_clause");
+  const value = node.childForFieldName("value")
+    ?? defaultNode?.childForFieldName("value")
+    ?? defaultNode?.namedChildren.at(-1)
+    ?? defaultNode;
   return value ? normalizeSemanticText(value.text) : null;
 }
 
@@ -113,6 +119,7 @@ function parseInputs(parameters) {
     "receiver_parameter",
     "parameter_declaration",
     "variadic_parameter_declaration",
+    "parameter",
   ]);
   const inputs = [];
   for (const child of parameters.namedChildren) {
@@ -144,6 +151,7 @@ function parseInputs(parameters) {
 function parseOutputs(declaration) {
   const output = declaration.childForFieldName("return_type")
     ?? declaration.childForFieldName("result")
+    ?? declaration.childForFieldName("returns")
     ?? (declaration.type === "method_declaration" ? declaration.childForFieldName("type") : null);
   if (!output) return [];
   return [{ type: normalizeSemanticText(output.text.replace(/^:\s*/u, "")), condition: null }];
@@ -169,6 +177,7 @@ function declarationInfo(language, node, scope, namespace) {
   let body = node.childForFieldName("body");
   let kind;
   let name;
+  let identityName;
   let identitySuffix = "";
   let effectiveScope = scope;
 
@@ -215,8 +224,8 @@ function declarationInfo(language, node, scope, namespace) {
   } else if (language === "java") {
     const kindByType = {
       class_declaration: "class",
-      record_declaration: "class",
-      enum_declaration: "class",
+      record_declaration: "record",
+      enum_declaration: "enum",
       interface_declaration: "interface",
       method_declaration: "method",
       constructor_declaration: "method",
@@ -244,10 +253,33 @@ function declarationInfo(language, node, scope, namespace) {
     } else {
       return null;
     }
+  } else if (language === "csharp") {
+    const kindByType = {
+      class_declaration: "class",
+      record_declaration: "record",
+      struct_declaration: "struct",
+      enum_declaration: "enum",
+      interface_declaration: "interface",
+      method_declaration: "method",
+      constructor_declaration: "method",
+    };
+    kind = kindByType[node.type];
+    name = nameNode?.text;
+    if (!kind) return null;
+    if (kind === "method") {
+      identitySuffix = `(${parameterTypes(parameters)})`;
+      if (node.type === "constructor_declaration") {
+        identityName = name;
+        name = ".ctor";
+      }
+    }
   }
 
   if (!name) return null;
-  const scopedName = [...effectiveScope.map((part) => part.name), `${name}${identitySuffix}`]
+  const scopedName = [
+    ...effectiveScope.map((part) => part.name),
+    `${identityName ?? name}${identitySuffix}`,
+  ]
     .filter(Boolean)
     .join(".");
   return {
@@ -272,7 +304,86 @@ function namespaceFor(language, root, path) {
     const packageName = packageClause?.namedChildren.at(-1)?.text;
     if (packageName) return packageName;
   }
+  if (language === "csharp") {
+    const declaration = root.namedChildren.find((child) => (
+      ["file_scoped_namespace_declaration", "namespace_declaration"].includes(child.type)
+    ));
+    const namespaceName = declaration?.childForFieldName("name")?.text;
+    if (namespaceName) return namespaceName;
+  }
   return moduleNameForPath(path);
+}
+
+function csharpAttributes(node) {
+  if (!node) return [];
+  return node.namedChildren
+    .filter((child) => child.type === "attribute_list")
+    .flatMap((list) => descendants(list, "attribute"))
+    .map((attribute) => {
+      const rawName = attribute.childForFieldName("name")?.text
+        ?? attribute.namedChildren[0]?.text
+        ?? "";
+      const name = rawName.split(".").at(-1).replace(/Attribute$/u, "");
+      const argumentsNode = attribute.namedChildren.find((child) => child.type === "attribute_argument_list");
+      const staticString = firstDescendant(argumentsNode, new Set(["string_literal"]));
+      return {
+        name,
+        arguments: argumentsNode
+          ? normalizeSemanticText(argumentsNode.text.slice(1, -1))
+          : null,
+        staticString: staticString ? stripQuotes(staticString.text) : null,
+      };
+    })
+    .filter((attribute) => attribute.name);
+}
+
+function normalizedHttpRoute(classTemplate, methodTemplate, controllerName) {
+  const replaceController = (value) => value.replace(
+    /\[controller\]/giu,
+    controllerName?.replace(/Controller$/u, "") ?? "[controller]",
+  );
+  if (methodTemplate?.startsWith("/")) return replaceController(methodTemplate);
+  const parts = [classTemplate, methodTemplate]
+    .filter((value) => value !== null && value !== undefined && value !== "")
+    .map((value) => replaceController(value).replace(/^\/+|\/+$/gu, ""));
+  return `/${parts.join("/")}`.replace(/\/{2,}/gu, "/");
+}
+
+function csharpSemanticMetadata(node, declaration, parent = {}) {
+  const attributes = csharpAttributes(node);
+  const tags = attributes.map((attribute) => `attribute:${attribute.name}${
+    attribute.arguments === null ? "" : `(${attribute.arguments})`
+  }`);
+  const route = attributes.find((attribute) => attribute.name === "Route")?.staticString
+    ?? parent.routeTemplate
+    ?? null;
+  const controllerName = ["class", "record", "struct", "interface"].includes(declaration.kind)
+    ? declaration.name
+    : parent.controllerName;
+  const explicitAnonymous = attributes.some((attribute) => attribute.name === "AllowAnonymous");
+  const explicitRequired = attributes.some((attribute) => attribute.name === "Authorize");
+  const auth = explicitAnonymous ? "anonymous" : (explicitRequired ? "required" : parent.auth ?? null);
+  if (route) tags.push(`route:template:${route}`);
+  if (auth) tags.push(`auth:${auth}`);
+
+  const verbs = new Map([
+    ["HttpGet", "GET"],
+    ["HttpPost", "POST"],
+    ["HttpPut", "PUT"],
+    ["HttpPatch", "PATCH"],
+    ["HttpDelete", "DELETE"],
+  ]);
+  for (const attribute of attributes) {
+    const verb = verbs.get(attribute.name);
+    if (!verb) continue;
+    tags.push("entry_point:http", `http:${verb.toLowerCase()}`);
+    tags.push(`route:http:${verb} ${normalizedHttpRoute(
+      parent.routeTemplate,
+      attribute.staticString,
+      controllerName,
+    )}`);
+  }
+  return { tags: uniqueSorted(tags), routeTemplate: route, controllerName, auth };
 }
 
 function tagsForDeclaration(language, info, decorators, node) {
@@ -290,7 +401,7 @@ function tagsForDeclaration(language, info, decorators, node) {
 function dynamicRisks(target, node) {
   const risks = [];
   const lower = `${target} ${node.text}`.toLowerCase();
-  if (/\b(getattr|setattr|hasattr|eval|class\.forname|getmethod|reflect)\b/u.test(lower)) risks.push(RISK.REFLECTION);
+  if (/\b(getattr|setattr|hasattr|eval|class\.forname|getmethod|getproperty|bindingflags|custompropertytypemap|settypemap|reflect|typeof)\b/u.test(lower)) risks.push(RISK.REFLECTION);
   if (/\b(__import__|import_module|dynamic import|import\s*\()/u.test(lower)) risks.push(RISK.DYNAMIC_DISPATCH);
   if (/\b(container|inject|provider|dependency|service_locator)\b/u.test(lower)) risks.push(RISK.DEPENDENCY_INJECTION);
   if (/\b(register|registry|plugin|entry_point)\b/u.test(lower)) risks.push(RISK.RUNTIME_REGISTRATION);
@@ -308,13 +419,17 @@ function callTarget(language, node) {
     const name = node.childForFieldName("name")?.text;
     return [object, name].filter(Boolean).join(".") || null;
   }
+  if (language === "csharp" && node.type === "invocation_expression") {
+    return node.childForFieldName("function")?.text ?? null;
+  }
   return null;
 }
 
 function isCallNode(language, node) {
   return (language === "python" && node.type === "call")
     || (["javascript", "typescript", "tsx", "go"].includes(language) && node.type === "call_expression")
-    || (language === "java" && node.type === "method_invocation");
+    || (language === "java" && node.type === "method_invocation")
+    || (language === "csharp" && node.type === "invocation_expression");
 }
 
 function constructorTarget(language, node) {
@@ -324,6 +439,9 @@ function constructorTarget(language, node) {
       ?? null;
   }
   if (language === "java" && node.type === "object_creation_expression") {
+    return node.childForFieldName("type")?.text ?? null;
+  }
+  if (language === "csharp" && node.type === "object_creation_expression") {
     return node.childForFieldName("type")?.text ?? null;
   }
   return null;
@@ -338,6 +456,7 @@ function isAnonymousCallable(language, node) {
   }
   if (language === "java") return node.type === "lambda_expression";
   if (language === "go") return node.type === "func_literal";
+  if (language === "csharp") return ["lambda_expression", "anonymous_method_expression"].includes(node.type);
   return false;
 }
 
@@ -354,7 +473,7 @@ function conditionParts(node) {
 
 function shortCircuitParts(language, node) {
   const supported = (language === "python" && node.type === "boolean_operator")
-    || (["javascript", "typescript", "tsx"].includes(language) && node.type === "binary_expression");
+    || (["javascript", "typescript", "tsx", "csharp"].includes(language) && node.type === "binary_expression");
   if (!supported) return null;
   const left = node.childForFieldName("left");
   const right = node.childForFieldName("right");
@@ -382,9 +501,27 @@ function isNestedDeclaration(language, node) {
     ].includes(node.type);
   }
   if (language === "java") {
-    return ["class_declaration", "interface_declaration", "method_declaration", "constructor_declaration"].includes(node.type);
+    return [
+      "class_declaration",
+      "record_declaration",
+      "enum_declaration",
+      "interface_declaration",
+      "method_declaration",
+      "constructor_declaration",
+    ].includes(node.type);
   }
   if (language === "go") return ["function_declaration", "method_declaration", "type_spec"].includes(node.type);
+  if (language === "csharp") {
+    return [
+      "class_declaration",
+      "record_declaration",
+      "struct_declaration",
+      "enum_declaration",
+      "interface_declaration",
+      "method_declaration",
+      "constructor_declaration",
+    ].includes(node.type);
+  }
   return false;
 }
 
@@ -530,6 +667,20 @@ function importInfo(language, node, namespace, path) {
     const target = stripQuotes(node.childForFieldName("path")?.text ?? "");
     const alias = node.childForFieldName("name")?.text ?? target.split("/").at(-1);
     if (target) imports.push({ alias, target, typeOnly: false });
+  } else if (language === "csharp" && node.type === "using_directive") {
+    const aliasNode = node.childForFieldName("name");
+    const targetNode = node.namedChildren.findLast((child) => (
+      ["identifier", "qualified_name", "generic_name", "alias_qualified_name"].includes(child.type)
+    ));
+    const target = targetNode?.text ?? "";
+    if (target) {
+      imports.push({
+        alias: aliasNode?.text ?? "@namespace",
+        target,
+        typeOnly: false,
+        namespace: !aliasNode,
+      });
+    }
   }
   return imports;
 }
@@ -538,7 +689,8 @@ function importNode(language, node) {
   return (language === "python" && ["import_statement", "import_from_statement"].includes(node.type))
     || (["javascript", "typescript", "tsx"].includes(language) && node.type === "import_statement")
     || (language === "java" && node.type === "import_declaration")
-    || (language === "go" && node.type === "import_spec");
+    || (language === "go" && node.type === "import_spec")
+    || (language === "csharp" && node.type === "using_directive");
 }
 
 function directTypeName(node) {
@@ -583,8 +735,140 @@ function inheritanceTargets(language, node) {
         });
       }
     }
+  } else if (language === "csharp" && [
+    "class_declaration",
+    "record_declaration",
+    "struct_declaration",
+    "interface_declaration",
+  ].includes(node.type)) {
+    const baseList = node.namedChildren.find((child) => child.type === "base_list");
+    for (const item of baseList?.namedChildren ?? []) {
+      const target = directTypeName(item) ?? item.text;
+      if (target) targets.push({ target, kind: "INHERITS" });
+    }
   }
   return [...new Map(targets.map((item) => [`${item.kind}:${item.target}`, item])).values()];
+}
+
+function csharpArgumentType(argument, bindings) {
+  const expression = argument.childForFieldName("expression") ?? argument.namedChildren.at(-1) ?? argument;
+  if (expression.type === "identifier") return bindings.get(expression.text) ?? "?";
+  if (["string_literal", "verbatim_string_literal"].includes(expression.type)) return "string";
+  if (expression.type === "integer_literal") return "int";
+  if (expression.type === "boolean_literal") return "bool";
+  if (expression.type === "null_literal") return "?";
+  const created = expression.type === "object_creation_expression"
+    ? expression.childForFieldName("type")?.text
+    : null;
+  return created ?? "?";
+}
+
+function javaArgumentType(expression, bindings) {
+  if (!expression) return "?";
+  if (expression.type === "identifier") return bindings.get(expression.text) ?? "?";
+  if (expression.type === "string_literal") return "String";
+  if (expression.type === "character_literal") return "char";
+  if (/integer_literal$/u.test(expression.type)) return /[lL]$/u.test(expression.text) ? "long" : "int";
+  if (/floating_point_literal$/u.test(expression.type)) return /[fF]$/u.test(expression.text) ? "float" : "double";
+  if (["true", "false", "boolean_literal"].includes(expression.type)) return "boolean";
+  if (expression.type === "null_literal") return "?";
+  if (expression.type === "object_creation_expression") {
+    return expression.childForFieldName("type")?.text ?? "?";
+  }
+  return "?";
+}
+
+function javaInvocationInfo(node, bindings = new Map()) {
+  const name = node.childForFieldName("name")?.text;
+  if (!name) return null;
+  const receiver = node.childForFieldName("object")?.text ?? null;
+  const receiverName = receiver?.replace(/^this\./u, "");
+  const boundReceiver = receiver
+    ? (bindings.get(receiver) ?? bindings.get(receiverName) ?? receiver)
+    : null;
+  const argumentsNode = node.childForFieldName("arguments")
+    ?? node.namedChildren.find((child) => child.type === "argument_list");
+  const argumentTypes = (argumentsNode?.namedChildren ?? [])
+    .map((argument) => javaArgumentType(argument, bindings));
+  return {
+    target: `${boundReceiver ? `${normalizeSemanticText(boundReceiver)}.` : ""}${name}(${argumentTypes.join(",")})`,
+  };
+}
+
+function javaVariableBindings(node) {
+  if (!["field_declaration", "local_variable_declaration"].includes(node.type)) return [];
+  const type = node.childForFieldName("type")?.text;
+  if (!type) return [];
+  return descendants(node, "variable_declarator")
+    .map((declarator) => declarator.childForFieldName("name")?.text)
+    .filter(Boolean)
+    .map((name) => [name, normalizeSemanticText(type)]);
+}
+
+function csharpInvocationInfo(node, bindings = new Map()) {
+  const callable = node.childForFieldName("function");
+  if (!callable) return null;
+  const member = callable.type === "member_access_expression" ? callable : null;
+  const receiver = member?.childForFieldName("expression")?.text ?? null;
+  const nameNode = member?.childForFieldName("name") ?? callable;
+  const methodName = nameNode.type === "generic_name"
+    ? nameNode.namedChildren.find((child) => child.type === "identifier")?.text
+    : nameNode.text;
+  if (!methodName) return null;
+  const argumentsNode = node.childForFieldName("arguments")
+    ?? node.namedChildren.find((child) => child.type === "argument_list");
+  const argumentTypes = (argumentsNode?.namedChildren ?? [])
+    .filter((child) => child.type === "argument")
+    .map((argument) => csharpArgumentType(argument, bindings));
+  const boundReceiver = receiver ? (bindings.get(receiver) ?? receiver) : null;
+  return {
+    rawTarget: callable.text,
+    receiver,
+    methodName,
+    argumentTypes,
+    target: `${boundReceiver ? `${boundReceiver}.` : ""}${methodName}(${argumentTypes.join(",")})`,
+    genericTypes: nameNode.type === "generic_name"
+      ? (nameNode.namedChildren.find((child) => child.type === "type_argument_list")?.namedChildren ?? [])
+        .map((child) => normalizeSemanticText(child.text))
+      : [],
+  };
+}
+
+function csharpServiceRegistration(info) {
+  if (!info) return null;
+  const lifetime = new Map([
+    ["AddScoped", "scoped"],
+    ["AddTransient", "transient"],
+    ["AddSingleton", "singleton"],
+  ]).get(info.methodName);
+  if (!lifetime || info.genericTypes.length === 0 || info.genericTypes.length > 2) return null;
+  const [service, implementation = service] = info.genericTypes;
+  return { lifetime, service, implementation, target: `${lifetime}:${service}->${implementation}` };
+}
+
+function csharpStaticDatabaseSymbols(node, info) {
+  if (!info || !/^(?:Query|QueryAsync|QueryFirst|QueryFirstAsync|QueryFirstOrDefault|QueryFirstOrDefaultAsync|Execute|ExecuteAsync|ExecuteScalar|ExecuteScalarAsync)$/u.test(info.methodName)) {
+    return [];
+  }
+  const strings = [];
+  const collect = (current) => {
+    if (["string_literal", "verbatim_string_literal"].includes(current.type)) strings.push(current.text);
+    for (const child of current.namedChildren) collect(child);
+  };
+  collect(node);
+  return uniqueSorted(strings.flatMap((value) => value.match(/\bsp_[A-Za-z0-9_]+\b/gu) ?? []));
+}
+
+function csharpConstructorBindings(node, inputs) {
+  const parameterTypesByName = new Map(inputs.map((input) => [input.name, input.type]));
+  const bindings = [];
+  for (const assignment of descendants(node.childForFieldName("body"), "assignment_expression")) {
+    const left = assignment.childForFieldName("left")?.text;
+    const right = assignment.childForFieldName("right")?.text;
+    const type = parameterTypesByName.get(right);
+    if (left && type) bindings.push([left.replace(/^this\./u, ""), type]);
+  }
+  return bindings;
 }
 
 function combineCondition(previous, next, negate = false) {
@@ -639,6 +923,9 @@ function buildParsedFile(file, source, tree, config) {
   const entityById = new Map();
   const localBindings = new Map();
   const lexicalBindings = new Map();
+  const javaReceiverTypes = new Map();
+  const csharpReceiverTypes = new Map();
+  const csharpMetadata = new Map();
   const moduleEntity = createEntity({
     language: file.language,
     path: file.path,
@@ -660,6 +947,8 @@ function buildParsedFile(file, source, tree, config) {
     moduleEntity.stable_id,
     collectLocalBindings(tree.rootNode, file.language, new Set(), true, false),
   );
+  csharpReceiverTypes.set(moduleEntity.stable_id, new Map());
+  javaReceiverTypes.set(moduleEntity.stable_id, new Map());
   const shallow = file.classification === CLASSIFICATION.GENERATED;
   if (shallow) {
     const header = source.subarray(0, Math.min(source.length, 4096)).toString("utf8");
@@ -711,14 +1000,21 @@ function buildParsedFile(file, source, tree, config) {
     const declaration = declarationInfo(file.language, node, scope, namespace);
     if (declaration) {
       if (shallow && depth > 1) return;
-      const tags = tagsForDeclaration(file.language, declaration, decorators, node);
+      const parentMetadata = csharpMetadata.get(currentEntityId) ?? {};
+      const frameworkMetadata = file.language === "csharp"
+        ? csharpSemanticMetadata(node, declaration, parentMetadata)
+        : { tags: [] };
+      const tags = uniqueSorted([
+        ...tagsForDeclaration(file.language, declaration, decorators, node),
+        ...frameworkMetadata.tags,
+      ]);
       const inferredEntryPoint = tags.some((tag) => tag.startsWith("entry_point:"));
       const declarationRisks = [
         file.classification === CLASSIFICATION.GENERATED ? RISK.GENERATED_CODE : null,
         buildCondition ? RISK.CONDITIONAL_COMPILATION : null,
-        inferredEntryPoint ? RISK.UNSUPPORTED_SEMANTICS : null,
+        inferredEntryPoint && file.language !== "csharp" ? RISK.UNSUPPORTED_SEMANTICS : null,
       ].filter(Boolean);
-      if (inferredEntryPoint) riskFlags.add(RISK.UNSUPPORTED_SEMANTICS);
+      if (inferredEntryPoint && file.language !== "csharp") riskFlags.add(RISK.UNSUPPORTED_SEMANTICS);
       const entity = createEntity({
         language: file.language,
         path: file.path,
@@ -738,6 +1034,40 @@ function buildParsedFile(file, source, tree, config) {
       });
       entities.push(entity);
       entityById.set(entity.stable_id, entity);
+      if (file.language === "java") {
+        const inheritedReceiverTypes = javaReceiverTypes.get(currentEntityId) ?? new Map();
+        const receiverTypes = new Map(inheritedReceiverTypes);
+        for (const input of entity.inputs) {
+          if (input.type) receiverTypes.set(input.name, input.type);
+        }
+        javaReceiverTypes.set(entity.stable_id, receiverTypes);
+      }
+      if (file.language === "csharp") {
+        const inheritedReceiverTypes = csharpReceiverTypes.get(currentEntityId) ?? new Map();
+        const receiverTypes = new Map(inheritedReceiverTypes);
+        for (const input of entity.inputs) {
+          if (input.type) receiverTypes.set(input.name, input.type);
+        }
+        csharpReceiverTypes.set(entity.stable_id, receiverTypes);
+        csharpMetadata.set(entity.stable_id, frameworkMetadata);
+        if (node.type === "constructor_declaration") {
+          const ownerReceiverTypes = csharpReceiverTypes.get(currentEntityId) ?? new Map();
+          for (const [field, type] of csharpConstructorBindings(node, entity.inputs)) {
+            ownerReceiverTypes.set(field, type);
+            receiverTypes.set(field, type);
+          }
+          for (const input of entity.inputs.filter((item) => item.type)) {
+            relations.push(createRelation({
+              src: currentEntityId,
+              unresolvedTarget: input.type,
+              kind: "DEPENDS_ON",
+              path: file.path,
+              node,
+              condition: activeCondition,
+            }));
+          }
+        }
+      }
       recordUnsupportedCalls(declaration.parameters, currentEntityId, activeCondition);
       const inheritedBindings = lexicalBindings.get(currentEntityId) ?? new Set();
       const ownLexicalBindings = new Set([
@@ -768,11 +1098,11 @@ function buildParsedFile(file, source, tree, config) {
           src: moduleEntity.stable_id,
           dst: entity.stable_id,
           kind: "ROUTES_TO",
-          confidence: CONFIDENCE.LOW,
+          confidence: file.language === "csharp" ? CONFIDENCE.HIGH : CONFIDENCE.LOW,
           path: file.path,
           node,
           condition: activeCondition,
-          riskFlags: [RISK.UNSUPPORTED_SEMANTICS],
+          riskFlags: file.language === "csharp" ? [] : [RISK.UNSUPPORTED_SEMANTICS],
         }));
       }
 
@@ -800,6 +1130,7 @@ function buildParsedFile(file, source, tree, config) {
           condition: activeCondition,
           type_only: imported.typeOnly,
           wildcard: Boolean(imported.wildcard),
+          namespace: Boolean(imported.namespace),
           source_location: sourceLocation(file.path, node),
         });
         imports[imported.alias] = bindings;
@@ -822,6 +1153,22 @@ function buildParsedFile(file, source, tree, config) {
         );
       }
       return;
+    }
+
+    if (file.language === "csharp" && node.type === "field_declaration") {
+      const declarationNode = node.namedChildren.find((child) => child.type === "variable_declaration");
+      const type = declarationNode?.childForFieldName("type")?.text;
+      const receiverTypes = csharpReceiverTypes.get(currentEntityId);
+      if (type && receiverTypes) {
+        for (const declarator of declarationNode.namedChildren.filter((child) => child.type === "variable_declarator")) {
+          const name = declarator.childForFieldName("name")?.text;
+          if (name) receiverTypes.set(name, normalizeSemanticText(type));
+        }
+      }
+    }
+    if (file.language === "java") {
+      const receiverTypes = javaReceiverTypes.get(currentEntityId);
+      for (const [name, type] of javaVariableBindings(node)) receiverTypes?.set(name, type);
     }
 
     const condition = conditionParts(node);
@@ -871,7 +1218,7 @@ function buildParsedFile(file, source, tree, config) {
 
     const constructed = constructorTarget(file.language, node);
     if (constructed) {
-      const constructorRisks = [RISK.UNSUPPORTED_SEMANTICS];
+      const constructorRisks = file.language === "csharp" ? [] : [RISK.UNSUPPORTED_SEMANTICS];
       addRisk(constructorRisks, riskFlags, entityById, currentEntityId);
       relations.push(createRelation({
         src: currentEntityId,
@@ -885,7 +1232,13 @@ function buildParsedFile(file, source, tree, config) {
     }
 
     if (isCallNode(file.language, node)) {
-      const target = callTarget(file.language, node);
+      const javaInfo = file.language === "java"
+        ? javaInvocationInfo(node, javaReceiverTypes.get(currentEntityId))
+        : null;
+      const csharpInfo = file.language === "csharp"
+        ? csharpInvocationInfo(node, csharpReceiverTypes.get(currentEntityId))
+        : null;
+      const target = javaInfo?.target ?? csharpInfo?.target ?? callTarget(file.language, node);
       if (target) {
         const targetHead = target.replaceAll("?.", ".").split(".")[0];
         const shadowed = localBindings.get(currentEntityId)?.has(targetHead);
@@ -903,6 +1256,52 @@ function buildParsedFile(file, source, tree, config) {
           condition: activeCondition,
           riskFlags: risks,
         }));
+
+        if (file.language === "csharp") {
+          const registration = csharpServiceRegistration(csharpInfo);
+          if (registration) {
+            const registrationRisks = [RISK.DEPENDENCY_INJECTION];
+            addRisk(registrationRisks, riskFlags, entityById, currentEntityId);
+            const entity = entityById.get(currentEntityId);
+            if (entity) entity.semantic_tags = uniqueSorted([
+              ...entity.semantic_tags,
+              `di:lifetime:${registration.target}`,
+            ]);
+            relations.push(createRelation({
+              src: currentEntityId,
+              unresolvedTarget: registration.target,
+              kind: "CONFIGURES",
+              path: file.path,
+              node,
+              condition: activeCondition,
+              riskFlags: registrationRisks,
+            }));
+          }
+          const databaseSymbols = csharpStaticDatabaseSymbols(node, csharpInfo);
+          if (databaseSymbols.length > 0) {
+            const boundaryRisks = [RISK.CROSS_LANGUAGE_BOUNDARY];
+            addRisk(boundaryRisks, riskFlags, entityById, currentEntityId);
+            const entity = entityById.get(currentEntityId);
+            if (entity) {
+              entity.effects = uniqueSorted([...entity.effects, "database_access"]);
+              entity.semantic_tags = uniqueSorted([
+                ...entity.semantic_tags,
+                ...databaseSymbols.map((symbol) => `database:${symbol}`),
+              ]);
+            }
+            for (const symbol of databaseSymbols) {
+              relations.push(createRelation({
+                src: currentEntityId,
+                unresolvedTarget: symbol,
+                kind: "USES",
+                path: file.path,
+                node,
+                condition: activeCondition,
+                riskFlags: boundaryRisks,
+              }));
+            }
+          }
+        }
 
         if (/\b(app|router|server)\.(get|post|put|patch|delete|route|handle)\b/iu.test(target)
             || /\bhttp\.handlefunc\b/iu.test(target)) {

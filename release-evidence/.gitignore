@@ -1,0 +1,7 @@
+*
+!.gitignore
+!book1/
+book1/*
+!book1/oracle.json
+!book1/oracle.md
+!book1/oracle.sha256

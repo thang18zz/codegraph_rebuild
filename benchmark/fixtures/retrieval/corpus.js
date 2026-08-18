@@ -80,4 +80,25 @@ def public_api():
     "plugin.rb": "register(:public_api)\n",
     "routes.yaml": "handler: public_api\n",
   },
+  csharp_flow: {
+    "Services/IAuthService.cs": `
+namespace Demo.Services;
+public interface IAuthService { Task<Result> LoginAsync(LoginDto dto); }
+`,
+    "Controllers/AuthController.cs": `
+using Demo.Services;
+namespace Demo.Controllers;
+[ApiController]
+[Route("api/auth")]
+public class AuthController {
+  private readonly IAuthService _authService;
+  public AuthController(IAuthService authService) => _authService = authService;
+  [HttpPost("login")]
+  public Task<Result> Login(LoginDto dto) => _authService.LoginAsync(dto);
+}
+`,
+  },
+  csharp_gpu: {
+    "GpuCatalog.cs": "namespace Demo; public class GpuCatalog {}\n",
+  },
 });

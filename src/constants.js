@@ -1,6 +1,6 @@
 export const VERSION = "0.1.0";
 export const SCHEMA_VERSION = 3;
-export const PARSER_VERSION = "tree-sitter-wasm-vscode-0.3.1";
+export const PARSER_VERSION = "tree-sitter-wasm-vscode-0.3.1-csharp-1";
 
 export const CODEGRAPH_DIR = ".codegraph";
 export const DB_FILE = "graph.db";
@@ -91,6 +91,7 @@ export const LANGUAGE_BY_EXTENSION = Object.freeze({
   ".tsx": "tsx",
   ".java": "java",
   ".go": "go",
+  ".cs": "csharp",
 });
 
 export const DEFAULT_IGNORED_DIRECTORIES = new Set([

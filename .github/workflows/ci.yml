@@ -24,6 +24,8 @@ jobs:
             executable: dist/codegraph.exe
     steps:
       - uses: actions/checkout@v7
+      - name: Assert exact workflow SHA
+        run: node -e "const {execFileSync}=require('node:child_process'); const actual=execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim(); if(actual!==process.env.GITHUB_SHA) throw new Error(actual+' != '+process.env.GITHUB_SHA)"
       - uses: actions/setup-node@v7
         with:
           node-version-file: .node-version
